@@ -19,13 +19,35 @@ dotenv.config();
 // every single time we need data, a pool keeps
 // a set of connections open and ready to use
 // This is much faster and more efficient
-const pool = new Pool({
+/*const pool = new Pool({
   host: process.env.DB_HOST,
   port: process.env.DB_PORT,
   database: process.env.DB_NAME,
   user: process.env.DB_USER,
   password: process.env.DB_PASSWORD,
-});
+});*/
+
+// Checks which environment we are in
+// and uses the right connection method
+const pool = new Pool(
+  process.env.DATABASE_URL
+    ? {
+        // RENDER: use single URL
+        connectionString: process.env.DATABASE_URL,
+        ssl: {
+          rejectUnauthorized: false
+        }
+      }
+    : {
+        // LOCAL: use individual variables
+        host: process.env.DB_HOST,
+        port: process.env.DB_PORT,
+        database: process.env.DB_NAME,
+        user: process.env.DB_USER,
+        password: process.env.DB_PASSWORD,
+      }
+);
+
 
 // Test the connection when the server starts
 // This tells us immediately if something is wrong
