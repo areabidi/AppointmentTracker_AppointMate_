@@ -29,9 +29,21 @@ const pool = new Pool({
 
 // Test the connection when the server starts
 // This tells us immediately if something is wrong
+/*pool.connect((err, client, release) => {
+  if (err) {
+    console.error('Error connecting to the database:', err.message);
+  } else {
+    console.log('Successfully connected to the database!');
+    release();
+  }
+});*/
+
+// Test the connection when the server starts
 pool.connect((err, client, release) => {
   if (err) {
     console.error('Error connecting to the database:', err.message);
+    console.error('Full error:', err);
+    console.error('DATABASE_URL exists:', !!process.env.DATABASE_URL);
   } else {
     console.log('Successfully connected to the database!');
     release();
