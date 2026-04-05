@@ -314,3 +314,4 @@ INSERT INTO notes (appointment_id, created_by, type, content) VALUES
 --\i 'C:/Users/areab/Desktop/Side_Projects/AppointmentTracker_AppointMate_/server/db/seed.sql'
 --\dt --> lista all the tables
 
+f
