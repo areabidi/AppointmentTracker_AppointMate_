@@ -38,7 +38,14 @@ app.use(express.json());
 // allowedHeaders → what headers are allowed
 // credentials → allows JWT token to be sent
 app.use(cors({
-  origin: ['http://localhost:3000', process.env.CLIENT_URL],
+  origin: [
+    // Local development
+    'http://localhost:3000',
+    // Live frontend on Render
+    'https://appointmate-frontend.onrender.com',
+    // From .env file (fallback)
+    process.env.CLIENT_URL
+  ],
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true
