@@ -35,7 +35,19 @@ const pool = new Pool(
         // RENDER: use single URL
         connectionString: process.env.DATABASE_URL,
         ssl: {
-          rejectUnauthorized: false
+          // rejectUnauthorized: false tells Node.js to
+          // accept Render's self-signed SSL certificate
+          // Without this you get the error:
+          // "self-signed certificate DEPTH_ZERO_SELF_SIGNED_CERT"
+          rejectUnauthorized: false,
+          // =============================================
+          // FIX ADDED HERE — April 12
+          // =============================================
+          // require: true forces SSL to be used
+          // This is required by Render's PostgreSQL
+          // Without this the connection is rejected
+          // =============================================
+          require: true
         }
       }
     : {
