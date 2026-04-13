@@ -7,6 +7,11 @@
 // Think of it like a phone line between
 // the kitchen (Express) and the fridge (PostgreSQL)
 // Every time we need data we use this connection
+//
+// HISTORY OF CHANGES:
+// Original  → used individual variables only (local)
+// April 12  → added DATABASE_URL support for Render
+// April 12  → fixed SSL self-signed certificate error
 // =============================================
 
 const { Pool } = require('pg');
@@ -19,6 +24,13 @@ dotenv.config();
 // every single time we need data, a pool keeps
 // a set of connections open and ready to use
 // This is much faster and more efficient
+
+// =============================================
+// OLD CODE — original local-only connection
+// Kept for reference — do not delete
+// This only worked locally, not on Render
+// because it used individual variables
+// =============================================
 /*const pool = new Pool({
   host: process.env.DB_HOST,
   port: process.env.DB_PORT,
@@ -27,31 +39,49 @@ dotenv.config();
   password: process.env.DB_PASSWORD,
 });*/
 
+// =============================================
+// CURRENT CODE — works both locally and on Render
+// =============================================
 // Checks which environment we are in
-// and uses the right connection method
+// If DATABASE_URL exists → we are on Render
+// If not → we are running locally
 const pool = new Pool(
   process.env.DATABASE_URL
     ? {
-        // RENDER: use single URL
+        // =============================================
+        // RENDER CONFIG
+        // =============================================
+        // Uses a single connection URL that Render provides
+        // Found in Render dashboard → appointmate-db → Connect
+        // =============================================
         connectionString: process.env.DATABASE_URL,
-        ssl: {
-          // rejectUnauthorized: false tells Node.js to
-          // accept Render's self-signed SSL certificate
-          // Without this you get the error:
-          // "self-signed certificate DEPTH_ZERO_SELF_SIGNED_CERT"
-          rejectUnauthorized: false,
-          // =============================================
-          // FIX ADDED HERE — April 12
-          // =============================================
-          // require: true forces SSL to be used
-          // This is required by Render's PostgreSQL
-          // Without this the connection is rejected
-          // =============================================
-          require: true
-        }
+
+        // =============================================
+        // SSL FIX — added April 12
+        // =============================================
+        // Render uses a self-signed SSL certificate
+        // This was causing this error:
+        // "Error: self-signed certificate"
+        // "code: DEPTH_ZERO_SELF_SIGNED_CERT"
+        //
+        // Previous attempts that did NOT work:
+        // ssl: { rejectUnauthorized: false }
+        // ssl: { rejectUnauthorized: false, require: true }
+        //
+        // Fix that works:
+        // ssl: false → completely disables SSL verification
+        // This allows the connection to go through
+        // =============================================
+        ssl: false
       }
     : {
-        // LOCAL: use individual variables
+        // =============================================
+        // LOCAL CONFIG
+        // =============================================
+        // Uses individual variables from .env file
+        // DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD
+        // These point to PostgreSQL on your computer
+        // =============================================
         host: process.env.DB_HOST,
         port: process.env.DB_PORT,
         database: process.env.DB_NAME,
@@ -60,9 +90,10 @@ const pool = new Pool(
       }
 );
 
-
-// Test the connection when the server starts
-// This tells us immediately if something is wrong
+// =============================================
+// OLD CONNECTION TEST — kept for reference
+// Simpler version without full error details
+// =============================================
 /*pool.connect((err, client, release) => {
   if (err) {
     console.error('Error connecting to the database:', err.message);
@@ -72,7 +103,13 @@ const pool = new Pool(
   }
 });*/
 
-// Test the connection when the server starts
+// =============================================
+// CURRENT CONNECTION TEST
+// =============================================
+// Runs when the server starts
+// Shows full error details if connection fails
+// Shows DATABASE_URL status for debugging
+// =============================================
 pool.connect((err, client, release) => {
   if (err) {
     console.error('Error connecting to the database:', err.message);
