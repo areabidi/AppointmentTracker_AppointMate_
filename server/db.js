@@ -54,7 +54,7 @@ const pool = new Pool(
         // Uses a single connection URL that Render provides
         // Found in Render dashboard → appointmate-db → Connect
         // =============================================
-        connectionString: process.env.DATABASE_URL,
+        //connectionString: process.env.DATABASE_URL,
 
         // =============================================
         // SSL FIX — added April 12
@@ -72,7 +72,14 @@ const pool = new Pool(
         // ssl: false → completely disables SSL verification
         // This allows the connection to go through
         // =============================================
-        ssl: false
+        //ssl: false
+
+        // SSL: rejectUnauthorized:false means use SSL (Neon requires it)
+        // but skip certificate verification — data is still encrypted.
+        // Neon replaced Supabase (July 2026) — old fix was ssl:false
+        // which didn't work because Neon requires an SSL connection.
+        connectionString: process.env.DATABASE_URL,
+        ssl: { rejectUnauthorized: false }
       }
     : {
         // =============================================
