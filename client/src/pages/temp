@@ -1,0 +1,474 @@
+// =============================================
+// src/pages/Profile.jsx
+// =============================================
+// This page shows the logged in user's profile
+//
+// For patients it shows:
+// - Basic info
+// - Medical notes
+// - List of caregivers with access
+// - Ability to grant/revoke caregiver access
+//
+// For caregivers it shows:
+// - Basic info
+// - List of patients they have access to
+// =============================================
+
+import React, { useState, useEffect } from 'react';
+import api from '../services/api';
+
+function Profile() {
+  // Logged in user from localStorage
+  const user = JSON.parse(localStorage.getItem('user'));
+
+  // Stores caregivers (for patients)
+  // or patients (for caregivers)
+  const [connections, setConnections] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+
+  // For granting access to a new caregiver
+  const [caregiverEmail, setCaregiverEmail] = useState('');
+  const [showGrantForm, setShowGrantForm] = useState(false);
+
+  useEffect(() => {
+    fetchConnections();
+  }, []);
+
+  // =============================================
+  // fetchConnections
+  // =============================================
+  // Fetches caregivers if patient
+  // Fetches patients if caregiver
+  const fetchConnections = async () => {
+    try {
+      if (user.role === 'patient') {
+        const response = await api.get('/access/my-caregivers');
+        setConnections(response.data);
+      } else {
+        const response = await api.get('/access/my-patients');
+        setConnections(response.data);
+      }
+    } catch (err) {
+      setError('Failed to load connections');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // =============================================
+  // handleGrantAccess
+  // =============================================
+  // Patient grants a caregiver access
+  // by entering their email address
+  const handleGrantAccess = async (e) => {
+    e.preventDefault();
+    setError('');
+    setSuccess('');
+
+    try {
+      await api.post('/access/grant', {
+        caregiver_email: caregiverEmail
+      });
+
+      setSuccess('Access granted successfully!');
+      setCaregiverEmail('');
+      setShowGrantForm(false);
+      fetchConnections();
+
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to grant access');
+    }
+  };
+
+  // =============================================
+  // handleRevokeAccess
+  // =============================================
+  // Patient revokes a caregiver's access
+  const handleRevokeAccess = async (caregiverId) => {
+    setError('');
+    setSuccess('');
+
+    try {
+      await api.delete(`/access/revoke/${caregiverId}`);
+      setSuccess('Access revoked successfully!');
+      fetchConnections();
+
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to revoke access');
+    }
+  };
+
+  const getStatusColor = (status) => {
+    switch (status) {
+      case 'approved': return { bg: '#e8f5e9', color: '#2e7d32' };
+      case 'pending': return { bg: '#fff8e1', color: '#f57f17' };
+      case 'revoked': return { bg: '#ffebee', color: '#c62828' };
+      default: return { bg: '#f5f5f5', color: '#666' };
+    }
+  };
+
+  if (loading) {
+    return <div style={styles.loading}>Loading...</div>;
+  }
+
+  return (
+    <div style={styles.container}>
+
+      {/* Profile header */}
+      <div style={styles.profileCard}>
+        <div style={styles.avatar}>
+          {user.first_name[0]}{user.last_name[0]}
+        </div>
+        <div style={styles.profileInfo}>
+          <h1 style={styles.name}>
+            {user.first_name} {user.last_name}
+          </h1>
+          <p style={styles.email}>{user.email}</p>
+          <span style={styles.roleBadge}>{user.role}</span>
+        </div>
+      </div>
+
+      {/* Success and error messages */}
+      {error && <p style={styles.error}>{error}</p>}
+      {success && <p style={styles.success}>{success}</p>}
+
+      {/* Caregivers section for patients */}
+      {user.role === 'patient' && (
+        <div style={styles.section}>
+          <div style={styles.sectionHeader}>
+            <h2 style={styles.sectionTitle}>My Caregivers</h2>
+            <button
+              onClick={() => setShowGrantForm(!showGrantForm)}
+              style={styles.addButton}
+            >
+              {showGrantForm ? 'Cancel' : '+ Add Caregiver'}
+            </button>
+          </div>
+
+          {/* Grant access form */}
+          {showGrantForm && (
+            <form onSubmit={handleGrantAccess} style={styles.grantForm}>
+              <input
+                type="email"
+                value={caregiverEmail}
+                onChange={(e) => setCaregiverEmail(e.target.value)}
+                style={styles.input}
+                placeholder="Enter caregiver's email address"
+                required
+              />
+              <button type="submit" style={styles.submitButton}>
+                Grant Access
+              </button>
+            </form>
+          )}
+
+          {/* List of caregivers */}
+          {connections.length === 0 ? (
+            <div style={styles.empty}>
+              <p>No caregivers yet. Add one above!</p>
+            </div>
+          ) : (
+            <div style={styles.list}>
+              {connections.map(caregiver => {
+                const statusStyle = getStatusColor(caregiver.status);
+                return (
+                  <div key={caregiver.id} style={styles.connectionCard}>
+                    <div style={styles.connectionInfo}>
+
+                      {/* Caregiver avatar */}
+                      <div style={styles.smallAvatar}>
+                        {caregiver.first_name[0]}{caregiver.last_name[0]}
+                      </div>
+
+                      <div>
+                        <p style={styles.connectionName}>
+                          {caregiver.first_name} {caregiver.last_name}
+                        </p>
+                        <p style={styles.connectionEmail}>
+                          {caregiver.email}
+                        </p>
+                        {caregiver.can_drive && (
+                          <p style={styles.canDrive}>🚗 Can drive</p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div style={styles.connectionActions}>
+                      <span style={{
+                        ...styles.statusBadge,
+                        backgroundColor: statusStyle.bg,
+                        color: statusStyle.color
+                      }}>
+                        {caregiver.status}
+                      </span>
+
+                      {/* Only show revoke for approved caregivers */}
+                      {caregiver.status === 'approved' && (
+                        <button
+                          onClick={() => handleRevokeAccess(caregiver.id)}
+                          style={styles.revokeButton}
+                        >
+                          Revoke
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Patients section for caregivers */}
+      {user.role === 'caregiver' && (
+        <div style={styles.section}>
+          <h2 style={styles.sectionTitle}>My Patients</h2>
+
+          {connections.length === 0 ? (
+            <div style={styles.empty}>
+              <p>No patients yet. Ask a patient to add you!</p>
+            </div>
+          ) : (
+            <div style={styles.list}>
+              {connections.map(patient => {
+                const statusStyle = getStatusColor(patient.status);
+                return (
+                  <div key={patient.id} style={styles.connectionCard}>
+                    <div style={styles.connectionInfo}>
+                      <div style={styles.smallAvatar}>
+                        {patient.first_name[0]}{patient.last_name[0]}
+                      </div>
+                      <div>
+                        <p style={styles.connectionName}>
+                          {patient.first_name} {patient.last_name}
+                        </p>
+                        <p style={styles.connectionEmail}>
+                          {patient.email}
+                        </p>
+                        {patient.address && (
+                          <p style={styles.connectionDetail}>
+                            📍 {patient.address}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    <span style={{
+                      ...styles.statusBadge,
+                      backgroundColor: statusStyle.bg,
+                      color: statusStyle.color
+                    }}>
+                      {patient.status}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+    </div>
+  );
+}
+
+const styles = {
+  container: {
+    maxWidth: '900px',
+    margin: '0 auto',
+    padding: '2rem'
+  },
+  profileCard: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '1.5rem',
+    backgroundColor: 'white',
+    border: '1px solid #e0e0e0',
+    borderRadius: '8px',
+    padding: '1.5rem',
+    marginBottom: '2rem',
+    boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
+  },
+  avatar: {
+    width: '80px',
+    height: '80px',
+    borderRadius: '50%',
+    backgroundColor: '#1976d2',
+    color: 'white',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: '2rem',
+    fontWeight: 'bold',
+    flexShrink: 0
+  },
+  profileInfo: {
+    flex: 1
+  },
+  name: {
+    color: '#333',
+    margin: '0 0 0.25rem'
+  },
+  email: {
+    color: '#666',
+    margin: '0 0 0.5rem'
+  },
+  roleBadge: {
+    backgroundColor: '#e3f2fd',
+    color: '#1976d2',
+    padding: '0.25rem 0.75rem',
+    borderRadius: '20px',
+    fontSize: '0.8rem',
+    fontWeight: '500'
+  },
+  error: {
+    backgroundColor: '#ffebee',
+    color: '#c62828',
+    padding: '0.75rem',
+    borderRadius: '4px',
+    marginBottom: '1rem'
+  },
+  success: {
+    backgroundColor: '#e8f5e9',
+    color: '#2e7d32',
+    padding: '0.75rem',
+    borderRadius: '4px',
+    marginBottom: '1rem'
+  },
+  section: {
+    marginBottom: '2rem'
+  },
+  sectionHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: '1rem'
+  },
+  sectionTitle: {
+    color: '#333',
+    margin: 0,
+    borderBottom: '2px solid #e0e0e0',
+    paddingBottom: '0.5rem',
+    flex: 1
+  },
+  addButton: {
+    backgroundColor: '#1976d2',
+    color: 'white',
+    border: 'none',
+    padding: '0.5rem 1rem',
+    borderRadius: '4px',
+    cursor: 'pointer',
+    marginLeft: '1rem'
+  },
+  grantForm: {
+    display: 'flex',
+    gap: '1rem',
+    marginBottom: '1rem'
+  },
+  input: {
+    flex: 1,
+    padding: '0.75rem',
+    border: '1px solid #ddd',
+    borderRadius: '4px',
+    fontSize: '1rem'
+  },
+  submitButton: {
+    backgroundColor: '#1976d2',
+    color: 'white',
+    border: 'none',
+    padding: '0.75rem 1.5rem',
+    borderRadius: '4px',
+    cursor: 'pointer'
+  },
+  empty: {
+    textAlign: 'center',
+    padding: '2rem',
+    backgroundColor: '#f5f5f5',
+    borderRadius: '8px',
+    color: '#666'
+  },
+  list: {
+    display: 'grid',
+    gap: '1rem'
+  },
+  connectionCard: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: 'white',
+    border: '1px solid #e0e0e0',
+    borderRadius: '8px',
+    padding: '1rem 1.5rem',
+    boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
+  },
+  connectionInfo: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '1rem'
+  },
+  smallAvatar: {
+    width: '45px',
+    height: '45px',
+    borderRadius: '50%',
+    backgroundColor: '#1976d2',
+    color: 'white',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: '1rem',
+    fontWeight: 'bold',
+    flexShrink: 0
+  },
+  connectionName: {
+    fontWeight: '500',
+    color: '#333',
+    margin: '0 0 0.25rem'
+  },
+  connectionEmail: {
+    color: '#666',
+    fontSize: '0.9rem',
+    margin: '0 0 0.25rem'
+  },
+  connectionDetail: {
+    color: '#666',
+    fontSize: '0.85rem',
+    margin: 0
+  },
+  canDrive: {
+    color: '#2e7d32',
+    fontSize: '0.85rem',
+    margin: 0
+  },
+  connectionActions: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '1rem'
+  },
+  statusBadge: {
+    padding: '0.25rem 0.75rem',
+    borderRadius: '20px',
+    fontSize: '0.8rem',
+    fontWeight: '500'
+  },
+  revokeButton: {
+    backgroundColor: 'transparent',
+    color: '#c62828',
+    border: '1px solid #c62828',
+    padding: '0.4rem 0.75rem',
+    borderRadius: '4px',
+    cursor: 'pointer',
+    fontSize: '0.85rem'
+  },
+  loading: {
+    textAlign: 'center',
+    padding: '3rem',
+    color: '#666'
+  }
+};
+
+export default Profile;
+
+
+//-----

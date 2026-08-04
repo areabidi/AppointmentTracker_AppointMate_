@@ -59,6 +59,7 @@ app.use('/api/appointments', appointmentRoutes);
 app.use('/api/access', accessRoutes);
 app.use('/api/drivers', driverRoutes);
 app.use('/api/notes', notesRoutes);
+app.use('/api/profile', require('./routes/profile'));
 
 // Test route to confirm server is running
 app.get('/', (req, res) => {

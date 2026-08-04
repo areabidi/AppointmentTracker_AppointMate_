@@ -308,3 +308,10 @@ CREATE TABLE notes (
 --users ──→ appointments (one patient has many appointments)
 --appointments ──→ appointment_drivers (one appointment has many driver offers)
 --appointments ──→ notes (one appointment has many notes)
+
+
+ALTER TABLE patient_profiles 
+ADD COLUMN emergency_contact_phone VARCHAR(20);
+
+ALTER TABLE patient_profiles
+ADD COLUMN allergies TEXT;
