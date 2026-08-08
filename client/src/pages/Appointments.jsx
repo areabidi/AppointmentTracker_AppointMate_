@@ -28,6 +28,8 @@ import { Calendar, momentLocalizer } from 'react-big-calendar';
 import moment from 'moment';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
 import api from '../services/api';
+import AppointmentDriver from '../components/AppointmentDriver';
+
 
 // =============================================
 // momentLocalizer
@@ -638,6 +640,9 @@ function Appointments() {
                         </div>
                       </div>
                     )}
+
+                  {/* ── Driver section ── */}
+                  <AppointmentDriver appointmentId={selectedAppointment.id} />
 
                   {/* Notes section */}
                   <div style={styles.divider}></div>
