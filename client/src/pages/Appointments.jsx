@@ -29,7 +29,7 @@ import moment from 'moment';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
 import api from '../services/api';
 import AppointmentDriver from '../components/AppointmentDriver';
-
+import AppointmentNotes from '../components/AppointmentNotes';
 
 // =============================================
 // momentLocalizer
@@ -644,26 +644,8 @@ function Appointments() {
                   {/* ── Driver section ── */}
                   <AppointmentDriver appointmentId={selectedAppointment.id} />
 
-                  {/* Notes section */}
-                  <div style={styles.divider}></div>
-                  <div style={styles.notesTitle}>
-                    Notes ({notes.length})
-                  </div>
-
-                  {notes.length === 0 ? (
-                    <p style={styles.noNotes}>No notes yet.</p>
-                  ) : (
-                    notes.map(note => (
-                      <div key={note.id} style={styles.noteItem}>
-                        <p style={styles.noteContent}>{note.content}</p>
-                        <p style={styles.noteMeta}>
-                          {note.created_by_first_name} {note.created_by_last_name}
-                          {' · '}
-                          {new Date(note.created_at).toLocaleDateString()}
-                        </p>
-                      </div>
-                    ))
-                  )}
+                 {/* ── Notes section ── */}
+                  <AppointmentNotes appointmentId={selectedAppointment.id} />
 
                   {/* Cancel form */}
                   {cancellingId === selectedAppointment.id && (
