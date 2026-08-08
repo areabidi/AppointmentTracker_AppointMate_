@@ -148,6 +148,73 @@ router.post('/', verifyToken, async (req, res) => {
 // Edits an existing appointment
 // Only users with access to the patient
 // can edit their appointments
+
+// =============================================
+// PUT /api/appointments/:id/status
+// =============================================
+// Updates the status of an appointment
+// Status can be: completed or missed
+// Only users with access to the patient
+// can update the status
+router.put('/:id/status', verifyToken, async (req, res) => {
+  try {
+    const { id, role } = req.user;
+    const appointmentId = req.params.id;
+    const { status } = req.body;
+
+    // Status must be completed or missed
+    if (!status || !['completed', 'missed'].includes(status)) {
+      return res.status(400).json({
+        error: 'Status must be completed or missed'
+      });
+    }
+
+    // Find the appointment
+    const existing = await pool.query(
+      'SELECT * FROM appointments WHERE id = $1',
+      [appointmentId]
+    );
+
+    if (existing.rows.length === 0) {
+      return res.status(404).json({ error: 'Appointment not found' });
+    }
+
+    const appointment = existing.rows[0];
+
+    // Check if caregiver has access to this patient
+    if (role === 'caregiver') {
+      const access = await pool.query(
+        `SELECT status FROM patient_caregiver_access 
+         WHERE patient_id = $1 AND caregiver_id = $2`,
+        [appointment.patient_id, id]
+      );
+
+      if (access.rows.length === 0 || access.rows[0].status !== 'approved') {
+        return res.status(403).json({
+          error: 'You do not have approved access to this patient'
+        });
+      }
+    }
+
+    // Update the status
+    const result = await pool.query(
+      `UPDATE appointments 
+       SET status = $1
+       WHERE id = $2
+       RETURNING *`,
+      [status, appointmentId]
+    );
+
+    res.status(200).json({
+      message: `Appointment marked as ${status}!`,
+      appointment: result.rows[0]
+    });
+
+  } catch (error) {
+    console.error('Update status error:', error.message);
+    res.status(500).json({ error: 'Server error updating status' });
+  }
+});
 router.put('/:id', verifyToken, async (req, res) => {
   try {
     const { id, role } = req.user;

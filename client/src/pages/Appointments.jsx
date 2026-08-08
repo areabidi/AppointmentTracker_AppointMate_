@@ -264,6 +264,24 @@ function Appointments() {
     }
   };
 
+  // =============================================
+// handleStatusUpdate
+// =============================================
+// Marks an appointment as completed or missed
+// Calls PUT /api/appointments/:id/status
+const handleStatusUpdate = async (status) => {
+  try {
+    const response = await api.put(
+      `/appointments/${selectedAppointment.id}/status`,
+      { status }
+    );
+    setSelectedAppointment(response.data.appointment);
+    fetchAppointments();
+  } catch (err) {
+    setError(err.response?.data?.error || `Failed to mark as ${status}`);
+  }
+};
+
   // Format date to readable string
   const formatDate = (dateString) => {
     return new Date(dateString).toLocaleString('en-US', {
@@ -684,34 +702,46 @@ function Appointments() {
               )}
             </div>
 
-            {/* Modal footer — action buttons */}
-            {!isEditing && selectedAppointment.status === 'upcoming' && (
-              <div style={styles.modalFooter}>
-                {cancellingId !== selectedAppointment.id && (
-                  <>
-                    <button
-                      onClick={() => setCancellingId(selectedAppointment.id)}
-                      style={styles.cancelButton}
-                    >
-                      Cancel Appointment
-                    </button>
-                    <button
-                      onClick={() => {
-                        setIsEditing(true);
-                        setEditData({
-                          title: selectedAppointment.title,
-                          location: selectedAppointment.location || '',
-                          appointment_time: ''
-                        });
-                      }}
-                      style={styles.editButton}
-                    >
-                      Edit
-                    </button>
-                  </>
-                )}
-              </div>
-            )}
+          {/* Modal footer — action buttons */}
+          {!isEditing && selectedAppointment.status === 'upcoming' && (
+            <div style={styles.modalFooter}>
+              {cancellingId !== selectedAppointment.id && (
+                <>
+                  <button
+                    onClick={() => setCancellingId(selectedAppointment.id)}
+                    style={styles.cancelButton}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => {
+                      setIsEditing(true);
+                      setEditData({
+                        title: selectedAppointment.title,
+                        location: selectedAppointment.location || '',
+                        appointment_time: ''
+                      });
+                    }}
+                    style={styles.editButton}
+                  >
+                    Edit
+                  </button>
+                  <button
+                    onClick={() => handleStatusUpdate('missed')}
+                    style={styles.missedButton}
+                  >
+                    🚫 Missed
+                  </button>
+                  <button
+                    onClick={() => handleStatusUpdate('completed')}
+                    style={styles.completedButton}
+                  >
+                    ✅ Completed
+                  </button>
+                </>
+              )}
+            </div>
+          )}
 
           </div>
         </div>
@@ -999,6 +1029,22 @@ const styles = {
   },
   editButton: {
     backgroundColor: '#1976d2',
+    color: 'white',
+    border: 'none',
+    padding: '0.5rem 1rem',
+    borderRadius: '4px',
+    cursor: 'pointer'
+  },
+  missedButton: {
+    backgroundColor: '#f57f17',
+    color: 'white',
+    border: 'none',
+    padding: '0.5rem 1rem',
+    borderRadius: '4px',
+    cursor: 'pointer'
+  },
+  completedButton: {
+    backgroundColor: '#2e7d32',
     color: 'white',
     border: 'none',
     padding: '0.5rem 1rem',
