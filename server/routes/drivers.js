@@ -74,18 +74,45 @@ router.post('/offer', verifyToken, verifyCaregiver, async (req, res) => {
       });
     }
 
-    // Check if caregiver already has an offer for this appointment
-    const existing = await pool.query(
-      `SELECT * FROM appointment_drivers 
-       WHERE appointment_id = $1 AND caregiver_id = $2`,
-      [appointment_id, caregiverId]
-    );
+// Check if caregiver already has an ACTIVE offer
+const existing = await pool.query(
+  `SELECT * FROM appointment_drivers 
+   WHERE appointment_id = $1 
+   AND caregiver_id = $2
+   AND status != 'cancelled'`,
+  [appointment_id, caregiverId]
+);
 
-    if (existing.rows.length > 0) {
-      return res.status(400).json({ 
-        error: 'You have already made an offer for this appointment' 
-      });
-    }
+if (existing.rows.length > 0) {
+  return res.status(400).json({ 
+    error: 'You have already made an offer for this appointment' 
+  });
+}
+
+// Check if a cancelled offer exists — if so reactivate it
+// instead of creating a new row
+const cancelled = await pool.query(
+  `SELECT * FROM appointment_drivers 
+   WHERE appointment_id = $1 
+   AND caregiver_id = $2
+   AND status = 'cancelled'`,
+  [appointment_id, caregiverId]
+);
+
+if (cancelled.rows.length > 0) {
+  const result = await pool.query(
+    `UPDATE appointment_drivers 
+     SET status = 'offered', offered_at = NOW()
+     WHERE appointment_id = $1 AND caregiver_id = $2
+     RETURNING *`,
+    [appointment_id, caregiverId]
+  );
+  return res.status(200).json({
+    message: 'Drive offer re-activated!',
+    offer: result.rows[0]
+  });
+}
+
 
     // Create the offer
     const result = await pool.query(
@@ -209,6 +236,8 @@ router.put('/accept/:appointmentId', verifyToken, verifyCaregiver, async (req, r
 // DELETE /api/drivers/cancel/:appointmentId
 // =============================================
 // Caregiver cancels their drive offer
+// Cannot cancel within the cancellation deadline
+// set by the patient (default 3 days before)
 router.delete('/cancel/:appointmentId', verifyToken, verifyCaregiver, async (req, res) => {
   try {
     const caregiverId = req.user.id;
@@ -224,6 +253,33 @@ router.delete('/cancel/:appointmentId', verifyToken, verifyCaregiver, async (req
     if (existing.rows.length === 0) {
       return res.status(404).json({ 
         error: 'Drive offer not found' 
+      });
+    }
+
+    // Get the appointment to check the deadline
+    const appointment = await pool.query(
+      `SELECT appointment_time, cancellation_deadline_days 
+       FROM appointments WHERE id = $1`,
+      [appointmentId]
+    );
+
+    if (appointment.rows.length === 0) {
+      return res.status(404).json({ error: 'Appointment not found' });
+    }
+
+    const { appointment_time, cancellation_deadline_days } = appointment.rows[0];
+
+    // Calculate the deadline
+    // e.g. if appointment is Aug 10 and deadline is 3 days
+    // caregiver cannot cancel after Aug 7
+    const appointmentDate = new Date(appointment_time);
+    const deadlineDate = new Date(appointmentDate);
+    deadlineDate.setDate(deadlineDate.getDate() - cancellation_deadline_days);
+    const now = new Date();
+
+    if (now > deadlineDate) {
+      return res.status(400).json({
+        error: `Cannot cancel — the cancellation deadline was ${cancellation_deadline_days} days before the appointment (${deadlineDate.toDateString()})`
       });
     }
 

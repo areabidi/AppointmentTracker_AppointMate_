@@ -21,6 +21,7 @@
 // Blue   → upcoming
 // Green  → completed
 // Red    → cancelled
+// Orange → missed
 // =============================================
 
 import React, { useState, useEffect } from 'react';
@@ -31,49 +32,24 @@ import api from '../services/api';
 import AppointmentDriver from '../components/AppointmentDriver';
 import AppointmentNotes from '../components/AppointmentNotes';
 
-// =============================================
-// momentLocalizer
-// =============================================
-// react-big-calendar needs a date library
-// to handle formatting dates and times
-// We use moment.js for this
 const localizer = momentLocalizer(moment);
 
 function Appointments() {
-  // All appointments from the backend
   const [appointments, setAppointments] = useState([]);
-
-  // Notes for the selected appointment
-  const [notes, setNotes] = useState([]);
-
-  // The appointment that was clicked
-  // null means no modal is open
   const [selectedAppointment, setSelectedAppointment] = useState(null);
-
-  // Controls which view is active
-  // 'calendar' or 'list'
   const [view, setView] = useState('calendar');
-
-  // Controls if the create form is visible
   const [showForm, setShowForm] = useState(false);
-
-  // Tracks loading and error states
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-
-  // New appointment form data
   const [formData, setFormData] = useState({
     patient_id: '',
     title: '',
     location: '',
-    appointment_time: ''
+    appointment_time: '',
+    cancellation_deadline_days: 3
   });
-
-  // Cancel reason when cancelling an appointment
   const [cancelReason, setCancelReason] = useState('');
   const [cancellingId, setCancellingId] = useState(null);
-
-  // Edit form data
   const [isEditing, setIsEditing] = useState(false);
   const [editData, setEditData] = useState({
     title: '',
@@ -81,10 +57,8 @@ function Appointments() {
     appointment_time: ''
   });
 
-  // Get the logged in user
   const user = JSON.parse(localStorage.getItem('user'));
 
-  // Fetch appointments when page loads
   useEffect(() => {
     fetchAppointments();
   }, []);
@@ -93,8 +67,7 @@ function Appointments() {
   // fetchAppointments
   // =============================================
   // Gets all appointments from the backend
-  // The backend automatically filters based on
-  // who is logged in (patient or caregiver)
+  // Filtered by role (patient or caregiver)
   const fetchAppointments = async () => {
     try {
       const response = await api.get('/appointments');
@@ -107,84 +80,51 @@ function Appointments() {
   };
 
   // =============================================
-  // fetchNotes
-  // =============================================
-  // Gets all notes for a specific appointment
-  // Called when an appointment is clicked
-  const fetchNotes = async (appointmentId) => {
-    try {
-      const response = await api.get(`/notes/${appointmentId}`);
-      setNotes(response.data);
-    } catch (err) {
-      setNotes([]);
-    }
-  };
-
-  // =============================================
   // handleEventClick
   // =============================================
-  // Called when user clicks an appointment
-  // on the calendar or in the list
-  // Opens the modal with full details
+  // Opens the modal when an appointment is clicked
   const handleEventClick = async (appointment) => {
     setSelectedAppointment(appointment);
     setIsEditing(false);
     setCancellingId(null);
     setCancelReason('');
-    await fetchNotes(appointment.id);
   };
 
   // =============================================
   // calendarEvents
   // =============================================
-  // react-big-calendar needs events in a specific
-  // format with title, start, and end properties
-  // We convert our appointments to that format
+  // Converts appointments to react-big-calendar format
   const calendarEvents = appointments.map(apt => ({
-    // Spread all appointment data so we can
-    // access it when the event is clicked
     ...apt,
     title: apt.title,
     start: new Date(apt.appointment_time),
-    // End time is 1 hour after start by default
     end: new Date(new Date(apt.appointment_time).getTime() + 60 * 60 * 1000),
   }));
 
   // =============================================
   // eventStyleGetter
   // =============================================
-  // Controls the color of each event on the calendar
-  // based on its status
+  // Controls calendar event colors by status
   const eventStyleGetter = (event) => {
     let backgroundColor;
     let color;
-
     switch (event.status) {
       case 'upcoming':
-        backgroundColor = '#B5D4F4';
-        color = '#0C447C';
-        break;
+        backgroundColor = '#B5D4F4'; color = '#0C447C'; break;
       case 'completed':
-        backgroundColor = '#C0DD97';
-        color = '#27500A';
-        break;
+        backgroundColor = '#C0DD97'; color = '#27500A'; break;
       case 'cancelled':
-        backgroundColor = '#F7C1C1';
-        color = '#791F1F';
-        break;
+        backgroundColor = '#F7C1C1'; color = '#791F1F'; break;
+      case 'missed':
+        backgroundColor = '#FFE0B2'; color = '#E65100'; break;
       default:
-        backgroundColor = '#e0e0e0';
-        color = '#333';
+        backgroundColor = '#e0e0e0'; color = '#333';
     }
-
     return {
       style: {
-        backgroundColor,
-        color,
-        border: 'none',
-        borderRadius: '4px',
-        fontSize: '12px',
-        padding: '2px 6px'
+        backgroundColor, color,
+        border: 'none', borderRadius: '4px',
+        fontSize: '12px', padding: '2px 6px'
       }
     };
   };
@@ -200,17 +140,13 @@ function Appointments() {
         ...formData,
         patient_id: user.role === 'patient' ? user.id : formData.patient_id
       };
-
       await api.post('/appointments', data);
       fetchAppointments();
       setShowForm(false);
       setFormData({
-        patient_id: '',
-        title: '',
-        location: '',
-        appointment_time: ''
+        patient_id: '', title: '', location: '',
+        appointment_time: '', cancellation_deadline_days: 3
       });
-
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to create appointment');
     }
@@ -227,12 +163,9 @@ function Appointments() {
         `/appointments/${selectedAppointment.id}`,
         editData
       );
-
-      // Update the selected appointment with new data
       setSelectedAppointment(response.data.appointment);
       setIsEditing(false);
       fetchAppointments();
-
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to update appointment');
     }
@@ -241,56 +174,50 @@ function Appointments() {
   // =============================================
   // handleCancel
   // =============================================
-  // Cancels an appointment
-  // A reason is required
+  // Cancels an appointment — reason required
   const handleCancel = async (appointmentId) => {
     if (!cancelReason) {
       setError('Please provide a reason for cancellation');
       return;
     }
-
     try {
       await api.delete(`/appointments/${appointmentId}`, {
         data: { cancel_reason: cancelReason }
       });
-
       fetchAppointments();
       setSelectedAppointment(null);
       setCancellingId(null);
       setCancelReason('');
-
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to cancel appointment');
     }
   };
 
   // =============================================
-// handleStatusUpdate
-// =============================================
-// Marks an appointment as completed or missed
-// Calls PUT /api/appointments/:id/status
-const handleStatusUpdate = async (status) => {
-  try {
-    const response = await api.put(
-      `/appointments/${selectedAppointment.id}/status`,
-      { status }
-    );
-    setSelectedAppointment(response.data.appointment);
-    fetchAppointments();
-  } catch (err) {
-    setError(err.response?.data?.error || `Failed to mark as ${status}`);
-  }
-};
+  // handleStatusUpdate
+  // =============================================
+  // Marks appointment as completed or missed
+  const handleStatusUpdate = async (status) => {
+    try {
+      const response = await api.put(
+        `/appointments/${selectedAppointment.id}/status`,
+        { status }
+      );
+      setSelectedAppointment(response.data.appointment);
+      fetchAppointments();
+    } catch (err) {
+      setError(err.response?.data?.error || `Failed to mark as ${status}`);
+    }
+  };
 
-  // Format date to readable string
+  // =============================================
+  // formatDate
+  // =============================================
+  // Formats a date string to a readable format
   const formatDate = (dateString) => {
     return new Date(dateString).toLocaleString('en-US', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
+      weekday: 'long', year: 'numeric', month: 'long',
+      day: 'numeric', hour: '2-digit', minute: '2-digit'
     });
   };
 
@@ -301,65 +228,45 @@ const handleStatusUpdate = async (status) => {
   return (
     <div style={styles.container}>
 
-      {/* Page header */}
+      {/* ── Page header ── */}
       <div style={styles.header}>
         <div style={styles.headerLeft}>
           <h1 style={styles.title}>Appointments</h1>
-
-          {/* Toggle between calendar and list view */}
           <div style={styles.viewToggle}>
             <button
               onClick={() => setView('calendar')}
-              style={{
-                ...styles.viewBtn,
-                ...(view === 'calendar' ? styles.viewBtnActive : {})
-              }}
+              style={{ ...styles.viewBtn, ...(view === 'calendar' ? styles.viewBtnActive : {}) }}
             >
               Calendar
             </button>
             <button
               onClick={() => setView('list')}
-              style={{
-                ...styles.viewBtn,
-                ...(view === 'list' ? styles.viewBtnActive : {})
-              }}
+              style={{ ...styles.viewBtn, ...(view === 'list' ? styles.viewBtnActive : {}) }}
             >
               List
             </button>
           </div>
         </div>
-
-        <button
-          onClick={() => setShowForm(!showForm)}
-          style={styles.createButton}
-        >
+        <button onClick={() => setShowForm(!showForm)} style={styles.createButton}>
           {showForm ? 'Cancel' : '+ New Appointment'}
         </button>
       </div>
 
       {error && <p style={styles.error}>{error}</p>}
 
-      {/* Create appointment form */}
+      {/* ── Create appointment form ── */}
       {showForm && (
         <div style={styles.formCard}>
           <h2 style={styles.formTitle}>Create New Appointment</h2>
           <form onSubmit={handleCreate}>
 
-            {/* Only show patient ID field for caregivers */}
             {user.role === 'caregiver' && (
               <div style={styles.field}>
                 <label style={styles.label}>Patient ID</label>
                 <input
-                  type="text"
-                  name="patient_id"
-                  value={formData.patient_id}
-                  onChange={(e) => setFormData({
-                    ...formData,
-                    patient_id: e.target.value
-                  })}
-                  style={styles.input}
-                  placeholder="Enter patient ID"
-                  required
+                  type="text" name="patient_id" value={formData.patient_id}
+                  onChange={(e) => setFormData({ ...formData, patient_id: e.target.value })}
+                  style={styles.input} placeholder="Enter patient ID" required
                 />
               </div>
             )}
@@ -367,48 +274,50 @@ const handleStatusUpdate = async (status) => {
             <div style={styles.field}>
               <label style={styles.label}>Title</label>
               <input
-                type="text"
-                name="title"
-                value={formData.title}
-                onChange={(e) => setFormData({
-                  ...formData,
-                  title: e.target.value
-                })}
-                style={styles.input}
-                placeholder="e.g. Cardiology Checkup"
-                required
+                type="text" value={formData.title}
+                onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                style={styles.input} placeholder="e.g. Cardiology Checkup" required
               />
             </div>
 
             <div style={styles.field}>
               <label style={styles.label}>Location</label>
               <input
-                type="text"
-                name="location"
-                value={formData.location}
-                onChange={(e) => setFormData({
-                  ...formData,
-                  location: e.target.value
-                })}
-                style={styles.input}
-                placeholder="e.g. Toronto General Hospital"
+                type="text" value={formData.location}
+                onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+                style={styles.input} placeholder="e.g. Toronto General Hospital"
               />
             </div>
 
             <div style={styles.field}>
               <label style={styles.label}>Date & Time</label>
               <input
-                type="datetime-local"
-                name="appointment_time"
-                value={formData.appointment_time}
-                onChange={(e) => setFormData({
-                  ...formData,
-                  appointment_time: e.target.value
-                })}
-                style={styles.input}
-                required
+                type="datetime-local" value={formData.appointment_time}
+                onChange={(e) => setFormData({ ...formData, appointment_time: e.target.value })}
+                style={styles.input} required
               />
             </div>
+
+            {/* Cancellation deadline — patients only */}
+            {user.role === 'patient' && (
+              <div style={styles.field}>
+                <label style={styles.label}>
+                  Cancellation Deadline (days before appointment)
+                </label>
+                <input
+                  type="number" min="1" max="30"
+                  value={formData.cancellation_deadline_days}
+                  onChange={(e) => setFormData({
+                    ...formData,
+                    cancellation_deadline_days: parseInt(e.target.value)
+                  })}
+                  style={styles.input}
+                />
+                <small style={{ color: '#888', fontSize: '12px' }}>
+                  Caregivers cannot cancel their drive offer after this deadline
+                </small>
+              </div>
+            )}
 
             <button type="submit" style={styles.submitButton}>
               Create Appointment
@@ -417,9 +326,7 @@ const handleStatusUpdate = async (status) => {
         </div>
       )}
 
-      {/* =============================================
-          CALENDAR VIEW
-          ============================================= */}
+      {/* ── Calendar view ── */}
       {view === 'calendar' && (
         <div style={styles.calendarContainer}>
           <Calendar
@@ -433,63 +340,51 @@ const handleStatusUpdate = async (status) => {
             views={['month', 'week', 'day']}
             defaultView="month"
           />
-
-          {/* Color legend */}
           <div style={styles.legend}>
             <span style={styles.legendItem}>
-              <span style={{ ...styles.legendDot, background: '#B5D4F4' }}></span>
-              Upcoming
+              <span style={{ ...styles.legendDot, background: '#B5D4F4' }}></span>Upcoming
             </span>
             <span style={styles.legendItem}>
-              <span style={{ ...styles.legendDot, background: '#C0DD97' }}></span>
-              Completed
+              <span style={{ ...styles.legendDot, background: '#C0DD97' }}></span>Completed
             </span>
             <span style={styles.legendItem}>
-              <span style={{ ...styles.legendDot, background: '#F7C1C1' }}></span>
-              Cancelled
+              <span style={{ ...styles.legendDot, background: '#F7C1C1' }}></span>Cancelled
+            </span>
+            <span style={styles.legendItem}>
+              <span style={{ ...styles.legendDot, background: '#FFE0B2' }}></span>Missed
             </span>
           </div>
         </div>
       )}
 
-      {/* =============================================
-          LIST VIEW
-          ============================================= */}
+      {/* ── List view ── */}
       {view === 'list' && (
         <div style={styles.list}>
           {appointments.length === 0 ? (
-            <div style={styles.empty}>
-              <p>No appointments found.</p>
-            </div>
+            <div style={styles.empty}><p>No appointments found.</p></div>
           ) : (
             appointments.map(apt => (
-              <div
-                key={apt.id}
-                style={styles.card}
-                onClick={() => handleEventClick(apt)}
-              >
+              <div key={apt.id} style={styles.card} onClick={() => handleEventClick(apt)}>
                 <div style={styles.cardHeader}>
                   <h3 style={styles.aptTitle}>{apt.title}</h3>
                   <span style={{
                     ...styles.badge,
-                    backgroundColor: apt.status === 'upcoming' ? '#B5D4F4' :
-                      apt.status === 'completed' ? '#C0DD97' : '#F7C1C1',
-                    color: apt.status === 'upcoming' ? '#0C447C' :
-                      apt.status === 'completed' ? '#27500A' : '#791F1F'
+                    backgroundColor:
+                      apt.status === 'upcoming' ? '#B5D4F4' :
+                      apt.status === 'completed' ? '#C0DD97' :
+                      apt.status === 'missed' ? '#FFE0B2' : '#F7C1C1',
+                    color:
+                      apt.status === 'upcoming' ? '#0C447C' :
+                      apt.status === 'completed' ? '#27500A' :
+                      apt.status === 'missed' ? '#E65100' : '#791F1F'
                   }}>
                     {apt.status}
                   </span>
                 </div>
-                <p style={styles.detail}>
-                  📅 {formatDate(apt.appointment_time)}
-                </p>
-                {apt.location && (
-                  <p style={styles.detail}>📍 {apt.location}</p>
-                )}
+                <p style={styles.detail}>📅 {formatDate(apt.appointment_time)}</p>
+                {apt.location && <p style={styles.detail}>📍 {apt.location}</p>}
                 {user.role === 'caregiver' && apt.patient_first_name && (
-                  <p style={styles.detail}>
-                    👤 {apt.patient_first_name} {apt.patient_last_name}
-                  </p>
+                  <p style={styles.detail}>👤 {apt.patient_first_name} {apt.patient_last_name}</p>
                 )}
               </div>
             ))
@@ -497,17 +392,9 @@ const handleStatusUpdate = async (status) => {
         </div>
       )}
 
-      {/* =============================================
-          APPOINTMENT MODAL
-          =============================================
-          Shows when an appointment is clicked
-          Displays full details, notes, and actions
-          ============================================= */}
+      {/* ── Appointment modal ── */}
       {selectedAppointment && (
-        // Overlay dims the background
         <div style={styles.overlay} onClick={() => setSelectedAppointment(null)}>
-
-          {/* Modal — stop click from closing when clicking inside */}
           <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
 
             {/* Modal header */}
@@ -516,121 +403,91 @@ const handleStatusUpdate = async (status) => {
                 <h2 style={styles.modalTitle}>{selectedAppointment.title}</h2>
                 <span style={{
                   ...styles.modalBadge,
-                  backgroundColor: selectedAppointment.status === 'upcoming' ? '#B5D4F4' :
-                    selectedAppointment.status === 'completed' ? '#C0DD97' : '#F7C1C1',
-                  color: selectedAppointment.status === 'upcoming' ? '#0C447C' :
-                    selectedAppointment.status === 'completed' ? '#27500A' : '#791F1F'
+                  backgroundColor:
+                    selectedAppointment.status === 'upcoming' ? '#B5D4F4' :
+                    selectedAppointment.status === 'completed' ? '#C0DD97' :
+                    selectedAppointment.status === 'missed' ? '#FFE0B2' : '#F7C1C1',
+                  color:
+                    selectedAppointment.status === 'upcoming' ? '#0C447C' :
+                    selectedAppointment.status === 'completed' ? '#27500A' :
+                    selectedAppointment.status === 'missed' ? '#E65100' : '#791F1F'
                 }}>
                   {selectedAppointment.status}
                 </span>
               </div>
-              <button
-                onClick={() => setSelectedAppointment(null)}
-                style={styles.closeButton}
-              >
-                ✕
-              </button>
+              <button onClick={() => setSelectedAppointment(null)} style={styles.closeButton}>✕</button>
             </div>
 
             {/* Modal body */}
             <div style={styles.modalBody}>
-
-              {/* Show edit form or appointment details */}
               {isEditing ? (
-                // Edit form
                 <form onSubmit={handleEdit}>
                   <div style={styles.field}>
                     <label style={styles.label}>Title</label>
                     <input
-                      type="text"
-                      value={editData.title}
-                      onChange={(e) => setEditData({
-                        ...editData,
-                        title: e.target.value
-                      })}
-                      style={styles.input}
-                      placeholder={selectedAppointment.title}
+                      type="text" value={editData.title}
+                      onChange={(e) => setEditData({ ...editData, title: e.target.value })}
+                      style={styles.input} placeholder={selectedAppointment.title}
                     />
                   </div>
                   <div style={styles.field}>
                     <label style={styles.label}>Location</label>
                     <input
-                      type="text"
-                      value={editData.location}
-                      onChange={(e) => setEditData({
-                        ...editData,
-                        location: e.target.value
-                      })}
-                      style={styles.input}
-                      placeholder={selectedAppointment.location}
+                      type="text" value={editData.location}
+                      onChange={(e) => setEditData({ ...editData, location: e.target.value })}
+                      style={styles.input} placeholder={selectedAppointment.location}
                     />
                   </div>
                   <div style={styles.field}>
                     <label style={styles.label}>Date & Time</label>
                     <input
-                      type="datetime-local"
-                      value={editData.appointment_time}
-                      onChange={(e) => setEditData({
-                        ...editData,
-                        appointment_time: e.target.value
-                      })}
+                      type="datetime-local" value={editData.appointment_time}
+                      onChange={(e) => setEditData({ ...editData, appointment_time: e.target.value })}
                       style={styles.input}
                     />
                   </div>
                   <div style={{ display: 'flex', gap: '8px' }}>
-                    <button type="submit" style={styles.submitButton}>
-                      Save Changes
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setIsEditing(false)}
-                      style={styles.backButton}
-                    >
-                      Cancel
-                    </button>
+                    <button type="submit" style={styles.submitButton}>Save Changes</button>
+                    <button type="button" onClick={() => setIsEditing(false)} style={styles.backButton}>Cancel</button>
                   </div>
                 </form>
-
               ) : (
-                // Appointment details
                 <>
+                  {/* Date & time */}
                   <div style={styles.modalRow}>
                     <span style={styles.modalIcon}>📅</span>
                     <div>
                       <div style={styles.modalLabel}>Date & time</div>
-                      <div style={styles.modalValue}>
-                        {formatDate(selectedAppointment.appointment_time)}
-                      </div>
+                      <div style={styles.modalValue}>{formatDate(selectedAppointment.appointment_time)}</div>
                     </div>
                   </div>
 
+                  {/* Location */}
                   {selectedAppointment.location && (
                     <div style={styles.modalRow}>
                       <span style={styles.modalIcon}>📍</span>
                       <div>
                         <div style={styles.modalLabel}>Location</div>
+                        <div style={styles.modalValue}>{selectedAppointment.location}</div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Patient (caregivers only) */}
+                  {user.role === 'caregiver' && selectedAppointment.patient_first_name && (
+                    <div style={styles.modalRow}>
+                      <span style={styles.modalIcon}>👤</span>
+                      <div>
+                        <div style={styles.modalLabel}>Patient</div>
                         <div style={styles.modalValue}>
-                          {selectedAppointment.location}
+                          {selectedAppointment.patient_first_name}{' '}
+                          {selectedAppointment.patient_last_name}
                         </div>
                       </div>
                     </div>
                   )}
 
-                  {/* Show patient name for caregivers */}
-                  {user.role === 'caregiver' &&
-                    selectedAppointment.patient_first_name && (
-                      <div style={styles.modalRow}>
-                        <span style={styles.modalIcon}>👤</span>
-                        <div>
-                          <div style={styles.modalLabel}>Patient</div>
-                          <div style={styles.modalValue}>
-                            {selectedAppointment.patient_first_name}{' '}
-                            {selectedAppointment.patient_last_name}
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
+                  {/* Created by */}
                   <div style={styles.modalRow}>
                     <span style={styles.modalIcon}>✏️</span>
                     <div>
@@ -642,44 +499,45 @@ const handleStatusUpdate = async (status) => {
                     </div>
                   </div>
 
-                  {/* Show cancel reason if cancelled */}
-                  {selectedAppointment.status === 'cancelled' &&
-                    selectedAppointment.cancel_reason && (
-                      <div style={styles.modalRow}>
-                        <span style={styles.modalIcon}>❌</span>
-                        <div>
-                          <div style={styles.modalLabel}>Cancel reason</div>
-                          <div style={{
-                            ...styles.modalValue,
-                            color: '#791F1F'
-                          }}>
-                            {selectedAppointment.cancel_reason}
-                          </div>
+                  {/* Cancellation deadline */}
+                  <div style={styles.modalRow}>
+                    <span style={styles.modalIcon}>⏰</span>
+                    <div>
+                      <div style={styles.modalLabel}>Cancellation deadline</div>
+                      <div style={styles.modalValue}>
+                        {selectedAppointment.cancellation_deadline_days || 3} days before appointment
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Cancel reason (if cancelled) */}
+                  {selectedAppointment.status === 'cancelled' && selectedAppointment.cancel_reason && (
+                    <div style={styles.modalRow}>
+                      <span style={styles.modalIcon}>❌</span>
+                      <div>
+                        <div style={styles.modalLabel}>Cancel reason</div>
+                        <div style={{ ...styles.modalValue, color: '#791F1F' }}>
+                          {selectedAppointment.cancel_reason}
                         </div>
                       </div>
-                    )}
+                    </div>
+                  )}
 
                   {/* ── Driver section ── */}
                   <AppointmentDriver appointmentId={selectedAppointment.id} />
 
-                 {/* ── Notes section ── */}
+                  {/* ── Notes section ── */}
                   <AppointmentNotes appointmentId={selectedAppointment.id} />
 
                   {/* Cancel form */}
                   {cancellingId === selectedAppointment.id && (
                     <div style={{ marginTop: '1rem' }}>
                       <input
-                        type="text"
-                        value={cancelReason}
+                        type="text" value={cancelReason}
                         onChange={(e) => setCancelReason(e.target.value)}
-                        style={styles.input}
-                        placeholder="Reason for cancellation"
+                        style={styles.input} placeholder="Reason for cancellation"
                       />
-                      <div style={{
-                        display: 'flex',
-                        gap: '8px',
-                        marginTop: '8px'
-                      }}>
+                      <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
                         <button
                           onClick={() => handleCancel(selectedAppointment.id)}
                           style={styles.confirmCancelButton}
@@ -687,10 +545,7 @@ const handleStatusUpdate = async (status) => {
                           Confirm Cancel
                         </button>
                         <button
-                          onClick={() => {
-                            setCancellingId(null);
-                            setCancelReason('');
-                          }}
+                          onClick={() => { setCancellingId(null); setCancelReason(''); }}
                           style={styles.backButton}
                         >
                           Go Back
@@ -702,46 +557,46 @@ const handleStatusUpdate = async (status) => {
               )}
             </div>
 
-          {/* Modal footer — action buttons */}
-          {!isEditing && selectedAppointment.status === 'upcoming' && (
-            <div style={styles.modalFooter}>
-              {cancellingId !== selectedAppointment.id && (
-                <>
-                  <button
-                    onClick={() => setCancellingId(selectedAppointment.id)}
-                    style={styles.cancelButton}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={() => {
-                      setIsEditing(true);
-                      setEditData({
-                        title: selectedAppointment.title,
-                        location: selectedAppointment.location || '',
-                        appointment_time: ''
-                      });
-                    }}
-                    style={styles.editButton}
-                  >
-                    Edit
-                  </button>
-                  <button
-                    onClick={() => handleStatusUpdate('missed')}
-                    style={styles.missedButton}
-                  >
-                    🚫 Missed
-                  </button>
-                  <button
-                    onClick={() => handleStatusUpdate('completed')}
-                    style={styles.completedButton}
-                  >
-                    ✅ Completed
-                  </button>
-                </>
-              )}
-            </div>
-          )}
+            {/* Modal footer */}
+            {!isEditing && selectedAppointment.status === 'upcoming' && (
+              <div style={styles.modalFooter}>
+                {cancellingId !== selectedAppointment.id && (
+                  <>
+                    <button
+                      onClick={() => setCancellingId(selectedAppointment.id)}
+                      style={styles.cancelButton}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={() => {
+                        setIsEditing(true);
+                        setEditData({
+                          title: selectedAppointment.title,
+                          location: selectedAppointment.location || '',
+                          appointment_time: ''
+                        });
+                      }}
+                      style={styles.editButton}
+                    >
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => handleStatusUpdate('missed')}
+                      style={styles.missedButton}
+                    >
+                      🚫 Missed
+                    </button>
+                    <button
+                      onClick={() => handleStatusUpdate('completed')}
+                      style={styles.completedButton}
+                    >
+                      ✅ Completed
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
 
           </div>
         </div>
@@ -750,7 +605,6 @@ const handleStatusUpdate = async (status) => {
     </div>
   );
 }
-
 // =============================================
 // Styles
 // =============================================
