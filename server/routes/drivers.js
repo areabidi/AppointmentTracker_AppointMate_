@@ -74,45 +74,18 @@ router.post('/offer', verifyToken, verifyCaregiver, async (req, res) => {
       });
     }
 
-// Check if caregiver already has an ACTIVE offer
-const existing = await pool.query(
-  `SELECT * FROM appointment_drivers 
-   WHERE appointment_id = $1 
-   AND caregiver_id = $2
-   AND status != 'cancelled'`,
-  [appointment_id, caregiverId]
-);
+    // Check if caregiver already has an offer for this appointment
+    const existing = await pool.query(
+      `SELECT * FROM appointment_drivers 
+       WHERE appointment_id = $1 AND caregiver_id = $2`,
+      [appointment_id, caregiverId]
+    );
 
-if (existing.rows.length > 0) {
-  return res.status(400).json({ 
-    error: 'You have already made an offer for this appointment' 
-  });
-}
-
-// Check if a cancelled offer exists — if so reactivate it
-// instead of creating a new row
-const cancelled = await pool.query(
-  `SELECT * FROM appointment_drivers 
-   WHERE appointment_id = $1 
-   AND caregiver_id = $2
-   AND status = 'cancelled'`,
-  [appointment_id, caregiverId]
-);
-
-if (cancelled.rows.length > 0) {
-  const result = await pool.query(
-    `UPDATE appointment_drivers 
-     SET status = 'offered', offered_at = NOW()
-     WHERE appointment_id = $1 AND caregiver_id = $2
-     RETURNING *`,
-    [appointment_id, caregiverId]
-  );
-  return res.status(200).json({
-    message: 'Drive offer re-activated!',
-    offer: result.rows[0]
-  });
-}
-
+    if (existing.rows.length > 0) {
+      return res.status(400).json({ 
+        error: 'You have already made an offer for this appointment' 
+      });
+    }
 
     // Create the offer
     const result = await pool.query(
@@ -192,14 +165,43 @@ router.put('/accept/:appointmentId', verifyToken, verifyCaregiver, async (req, r
           [appointmentId, caregiverId]
         );
 
-        await client.query('COMMIT');
+await client.query('COMMIT');
+
+        // Send conflict notification to both caregivers
+        try {
+          const conflictDetails = await pool.query(
+            `SELECT 
+              u1.email AS caregiver1_email,
+              u2.email AS caregiver2_email,
+              a.title,
+              a.appointment_time,
+              a.location
+             FROM appointments a
+             JOIN appointment_drivers ad1 ON ad1.appointment_id = a.id AND ad1.status = 'conflict'
+             JOIN users u1 ON u1.id = ad1.caregiver_id
+             JOIN appointment_drivers ad2 ON ad2.appointment_id = a.id AND ad2.caregiver_id = $1
+             JOIN users u2 ON u2.id = ad2.caregiver_id
+             WHERE a.id = $2
+             LIMIT 1`,
+            [caregiverId, appointmentId]
+          );
+
+          if (conflictDetails.rows.length > 0) {
+            const d = conflictDetails.rows[0];
+            await sendConflictNotification(
+              d.caregiver1_email,
+              d.caregiver2_email,
+              { title: d.title, appointment_time: d.appointment_time, location: d.location }
+            );
+          }
+        } catch (emailError) {
+          console.error('Conflict email error:', emailError.message);
+        }
 
         return res.status(409).json({
           error: 'Conflict! Another caregiver accepted at the same time. Please contact each other to decide who will drive.',
           status: 'conflict'
-        });
-      }
-
+        }); }
       // Nobody accepted yet — mark this caregiver as accepted
       await client.query(
         `UPDATE appointment_drivers 
@@ -209,14 +211,47 @@ router.put('/accept/:appointmentId', verifyToken, verifyCaregiver, async (req, r
         [appointmentId, caregiverId]
       );
 
-      await client.query('COMMIT');
+    await client.query('COMMIT');
+
+      // Send email to patient notifying them of their driver
+      try {
+        const details = await pool.query(
+          `SELECT 
+            u_patient.email AS patient_email,
+            u_patient.first_name AS patient_first_name,
+            u_caregiver.first_name AS caregiver_first_name,
+            u_caregiver.last_name AS caregiver_last_name,
+            a.title,
+            a.appointment_time,
+            a.location
+           FROM appointments a
+           JOIN users u_patient ON a.patient_id = u_patient.id
+           JOIN users u_caregiver ON u_caregiver.id = $1
+           WHERE a.id = $2`,
+          [caregiverId, appointmentId]
+        );
+
+        if (details.rows.length > 0) {
+          const d = details.rows[0];
+          await sendDriverAcceptedEmail({
+            patientEmail: d.patient_email,
+            patientName: d.patient_first_name,
+            caregiverName: `${d.caregiver_first_name} ${d.caregiver_last_name}`,
+            appointmentTitle: d.title,
+            appointmentTime: new Date(d.appointment_time).toLocaleString(),
+            location: d.location
+          });
+        }
+      } catch (emailError) {
+        // Email failing should not stop the acceptance
+        console.error('Driver accepted email error:', emailError.message);
+      }
 
       res.status(200).json({
         message: 'You have accepted to drive to this appointment!',
         status: 'accepted'
-      });
-
-    } catch (error) {
+      });}
+     catch (error) {
       // If anything goes wrong roll back all changes
       await client.query('ROLLBACK');
       throw error;
@@ -236,8 +271,6 @@ router.put('/accept/:appointmentId', verifyToken, verifyCaregiver, async (req, r
 // DELETE /api/drivers/cancel/:appointmentId
 // =============================================
 // Caregiver cancels their drive offer
-// Cannot cancel within the cancellation deadline
-// set by the patient (default 3 days before)
 router.delete('/cancel/:appointmentId', verifyToken, verifyCaregiver, async (req, res) => {
   try {
     const caregiverId = req.user.id;
@@ -253,33 +286,6 @@ router.delete('/cancel/:appointmentId', verifyToken, verifyCaregiver, async (req
     if (existing.rows.length === 0) {
       return res.status(404).json({ 
         error: 'Drive offer not found' 
-      });
-    }
-
-    // Get the appointment to check the deadline
-    const appointment = await pool.query(
-      `SELECT appointment_time, cancellation_deadline_days 
-       FROM appointments WHERE id = $1`,
-      [appointmentId]
-    );
-
-    if (appointment.rows.length === 0) {
-      return res.status(404).json({ error: 'Appointment not found' });
-    }
-
-    const { appointment_time, cancellation_deadline_days } = appointment.rows[0];
-
-    // Calculate the deadline
-    // e.g. if appointment is Aug 10 and deadline is 3 days
-    // caregiver cannot cancel after Aug 7
-    const appointmentDate = new Date(appointment_time);
-    const deadlineDate = new Date(appointmentDate);
-    deadlineDate.setDate(deadlineDate.getDate() - cancellation_deadline_days);
-    const now = new Date();
-
-    if (now > deadlineDate) {
-      return res.status(400).json({
-        error: `Cannot cancel — the cancellation deadline was ${cancellation_deadline_days} days before the appointment (${deadlineDate.toDateString()})`
       });
     }
 

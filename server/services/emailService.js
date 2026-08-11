@@ -1,68 +1,53 @@
 // =============================================
 // services/emailService.js
 // =============================================
-// This file handles sending email notifications
+// Handles all email notifications for AppointMate
+// Uses SendGrid to send emails
 //
-// It uses Nodemailer with Gmail to send emails
-//
-// Emails are sent when:
-// 1. A new appointment is created
-//    → all caregivers with access get notified
-// 2. A driver conflict occurs
-//    → both conflicting caregivers get notified
-//
-// Setup required:
-// Add these to your .env file:
-// EMAIL_USER=your_gmail@gmail.com
-// EMAIL_PASS=your_gmail_app_password
+// Emails sent:
+// 1. New appointment created → caregivers notified
+// 2. Driver conflict → both caregivers notified
+// 3. Driver accepted → patient notified
+// 4. Reminder → day before appointment
 // =============================================
 
-const nodemailer = require('nodemailer');
+const sgMail = require('@sendgrid/mail');
 
-// Create a transporter using Gmail
-// The transporter is what actually sends the email
-// Think of it like setting up your email client
-const transporter = nodemailer.createTransport({
-  service: 'gmail',
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS
-  }
-});
+// Set SendGrid API key from environment variables
+sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+
+const FROM_EMAIL = process.env.SENDGRID_FROM_EMAIL;
 
 // =============================================
 // sendAppointmentNotification
 // =============================================
-// Sends an email to all caregivers when a
-// new appointment is created for their patient
-//
-// recipients = array of caregiver email addresses
-// appointment = the appointment object
+// Sent to all caregivers when a new appointment
+// is created for their patient
 const sendAppointmentNotification = async (recipients, appointment) => {
   try {
-    const mailOptions = {
-      from: process.env.EMAIL_USER,
-      to: recipients.join(', '),
+    const msg = {
+      to: recipients,
+      from: FROM_EMAIL,
       subject: `New Appointment: ${appointment.title}`,
       html: `
-        <h2>New Appointment Created</h2>
-        <p>A new appointment has been scheduled:</p>
-        <ul>
-          <li><strong>Title:</strong> ${appointment.title}</li>
-          <li><strong>Location:</strong> ${appointment.location || 'Not specified'}</li>
-          <li><strong>Date & Time:</strong> ${new Date(appointment.appointment_time).toLocaleString()}</li>
-        </ul>
-        <p>Please log in to AppointMate to view more details.</p>
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <h2 style="color: #0f3d35;">New Appointment Created 📋</h2>
+          <p>A new appointment has been scheduled:</p>
+          <div style="background: #f5f5f5; border-radius: 8px; padding: 1rem; margin: 1rem 0;">
+            <p><strong>📋 Title:</strong> ${appointment.title}</p>
+            <p><strong>📍 Location:</strong> ${appointment.location || 'Not specified'}</p>
+            <p><strong>📅 Date & Time:</strong> ${new Date(appointment.appointment_time).toLocaleString()}</p>
+          </div>
+          <p>Please log in to AppointMate to view more details.</p>
+          <p style="color: #888; font-size: 12px;">This email was sent by AppointMate</p>
+        </div>
       `
     };
 
-    await transporter.sendMail(mailOptions);
+    await sgMail.sendMultiple(msg);
     console.log('Appointment notification sent to:', recipients);
 
   } catch (error) {
-    // We log the error but don't crash the app
-    // Email failing should not stop the appointment
-    // from being created
     console.error('Email notification error:', error.message);
   }
 };
@@ -70,32 +55,30 @@ const sendAppointmentNotification = async (recipients, appointment) => {
 // =============================================
 // sendConflictNotification
 // =============================================
-// Sends an email to both caregivers when a
-// driver conflict occurs
-//
-// caregiver1Email = first caregiver's email
-// caregiver2Email = second caregiver's email
-// appointment = the appointment object
+// Sent to both caregivers when a driver
+// conflict occurs
 const sendConflictNotification = async (caregiver1Email, caregiver2Email, appointment) => {
   try {
-    const mailOptions = {
-      from: process.env.EMAIL_USER,
-      to: [caregiver1Email, caregiver2Email].join(', '),
+    const msg = {
+      to: [caregiver1Email, caregiver2Email],
+      from: FROM_EMAIL,
       subject: `Driver Conflict: ${appointment.title}`,
       html: `
-        <h2>Driver Conflict Detected</h2>
-        <p>Two caregivers accepted to drive to the same appointment at the same time:</p>
-        <ul>
-          <li><strong>Appointment:</strong> ${appointment.title}</li>
-          <li><strong>Date & Time:</strong> ${new Date(appointment.appointment_time).toLocaleString()}</li>
-          <li><strong>Location:</strong> ${appointment.location || 'Not specified'}</li>
-        </ul>
-        <p>Please contact each other to decide who will drive.</p>
-        <p>You can update your drive status in AppointMate.</p>
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <h2 style="color: #c62828;">Driver Conflict Detected ⚠️</h2>
+          <p>Two caregivers accepted to drive to the same appointment at the same time:</p>
+          <div style="background: #f5f5f5; border-radius: 8px; padding: 1rem; margin: 1rem 0;">
+            <p><strong>📋 Appointment:</strong> ${appointment.title}</p>
+            <p><strong>📅 Date & Time:</strong> ${new Date(appointment.appointment_time).toLocaleString()}</p>
+            <p><strong>📍 Location:</strong> ${appointment.location || 'Not specified'}</p>
+          </div>
+          <p>Please contact each other to decide who will drive.</p>
+          <p style="color: #888; font-size: 12px;">This email was sent by AppointMate</p>
+        </div>
       `
     };
 
-    await transporter.sendMail(mailOptions);
+    await sgMail.sendMultiple(msg);
     console.log('Conflict notification sent to:', caregiver1Email, caregiver2Email);
 
   } catch (error) {
@@ -103,16 +86,96 @@ const sendConflictNotification = async (caregiver1Email, caregiver2Email, appoin
   }
 };
 
-module.exports = { 
-  sendAppointmentNotification, 
-  sendConflictNotification 
+// =============================================
+// sendDriverAcceptedEmail
+// =============================================
+// Sent to the patient when a caregiver
+// confirms they will drive them
+const sendDriverAcceptedEmail = async ({
+  patientEmail,
+  patientName,
+  caregiverName,
+  appointmentTitle,
+  appointmentTime,
+  location
+}) => {
+  try {
+    const msg = {
+      to: patientEmail,
+      from: FROM_EMAIL,
+      subject: `${caregiverName} will drive you to your appointment`,
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <h2 style="color: #0f3d35;">Driver Confirmed 🚗</h2>
+          <p>Hi ${patientName},</p>
+          <p>Great news! <strong>${caregiverName}</strong> has confirmed they will take you to your appointment.</p>
+          <div style="background: #f5f5f5; border-radius: 8px; padding: 1rem; margin: 1rem 0;">
+            <p><strong>📋 Appointment:</strong> ${appointmentTitle}</p>
+            <p><strong>📅 Date & Time:</strong> ${appointmentTime}</p>
+            ${location ? `<p><strong>📍 Location:</strong> ${location}</p>` : ''}
+            <p><strong>🚗 Driver:</strong> ${caregiverName}</p>
+          </div>
+          <p>Please make sure you are ready on time!</p>
+          <p style="color: #888; font-size: 12px;">This email was sent by AppointMate</p>
+        </div>
+      `
+    };
+
+    await sgMail.send(msg);
+    console.log(`Driver accepted email sent to ${patientEmail}`);
+
+  } catch (error) {
+    console.error('Driver accepted email error:', error.message);
+  }
 };
-```
 
----
+// =============================================
+// sendReminderEmail
+// =============================================
+// Sent to both patient and caregiver
+// the day before the appointment
+const sendReminderEmail = async ({
+  email,
+  name,
+  appointmentTitle,
+  appointmentTime,
+  location,
+  role
+}) => {
+  try {
+    const msg = {
+      to: email,
+      from: FROM_EMAIL,
+      subject: `Reminder: ${appointmentTitle} is tomorrow`,
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <h2 style="color: #0f3d35;">Appointment Reminder 📅</h2>
+          <p>Hi ${name},</p>
+          <p>This is a reminder that you have an appointment <strong>tomorrow</strong>.</p>
+          <div style="background: #f5f5f5; border-radius: 8px; padding: 1rem; margin: 1rem 0;">
+            <p><strong>📋 Appointment:</strong> ${appointmentTitle}</p>
+            <p><strong>📅 Date & Time:</strong> ${appointmentTime}</p>
+            ${location ? `<p><strong>📍 Location:</strong> ${location}</p>` : ''}
+          </div>
+          <p>${role === 'caregiver'
+            ? 'Please make sure you arrive on time to pick up your patient.'
+            : 'Please make sure you are ready on time!'}</p>
+          <p style="color: #888; font-size: 12px;">This email was sent by AppointMate</p>
+        </div>
+      `
+    };
 
-**Now add these to your `.env` file:**
-```
-# Email credentials
-EMAIL_USER=your_gmail@gmail.com
-EMAIL_PASS=your_gmail_app_password
+    await sgMail.send(msg);
+    console.log(`Reminder email sent to ${email}`);
+
+  } catch (error) {
+    console.error('Reminder email error:', error.message);
+  }
+};
+
+module.exports = {
+  sendAppointmentNotification,
+  sendConflictNotification,
+  sendDriverAcceptedEmail,
+  sendReminderEmail
+};
