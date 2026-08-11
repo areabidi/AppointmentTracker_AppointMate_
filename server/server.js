@@ -10,6 +10,8 @@
 const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
+const cron = require('node-cron');
+const { sendReminderEmail } = require('./services/emailService');
 
 // Load environment variables from .env file
 dotenv.config();
@@ -64,6 +66,65 @@ app.use('/api/profile', require('./routes/profile'));
 // Test route to confirm server is running
 app.get('/', (req, res) => {
   res.json({ message: 'AppointMate backend is running!' });
+});
+// =============================================
+// REMINDER CRON JOB
+// =============================================
+// Runs every day at 9AM
+// Finds all appointments tomorrow
+// Sends reminder email to patient and caregiver
+cron.schedule('0 9 * * *', async () => {
+  console.log('Running appointment reminder job...');
+  try {
+    const result = await pool.query(
+      `SELECT 
+        a.id,
+        a.title,
+        a.appointment_time,
+        a.location,
+        u_patient.email AS patient_email,
+        u_patient.first_name AS patient_name,
+        u_caregiver.email AS caregiver_email,
+        u_caregiver.first_name AS caregiver_name
+       FROM appointments a
+       JOIN users u_patient ON a.patient_id = u_patient.id
+       LEFT JOIN appointment_drivers ad ON ad.appointment_id = a.id 
+         AND ad.status = 'accepted'
+       LEFT JOIN users u_caregiver ON u_caregiver.id = ad.caregiver_id
+       WHERE a.status = 'upcoming'
+       AND DATE(a.appointment_time) = CURRENT_DATE + INTERVAL '1 day'`
+    );
+
+    for (const apt of result.rows) {
+      const aptTime = new Date(apt.appointment_time).toLocaleString();
+
+      // Email patient
+      await sendReminderEmail({
+        email: apt.patient_email,
+        name: apt.patient_name,
+        appointmentTitle: apt.title,
+        appointmentTime: aptTime,
+        location: apt.location,
+        role: 'patient'
+      });
+
+      // Email caregiver if one is assigned
+      if (apt.caregiver_email) {
+        await sendReminderEmail({
+          email: apt.caregiver_email,
+          name: apt.caregiver_name,
+          appointmentTitle: apt.title,
+          appointmentTime: aptTime,
+          location: apt.location,
+          role: 'caregiver'
+        });
+      }
+    }
+
+    console.log(`Reminders sent for ${result.rows.length} appointments`);
+  } catch (error) {
+    console.error('Reminder cron error:', error.message);
+  }
 });
 
 // Start the server
