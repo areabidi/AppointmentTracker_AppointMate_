@@ -25,6 +25,7 @@ const appointmentRoutes = require('./routes/appointments');
 const accessRoutes = require('./routes/access');
 const driverRoutes = require('./routes/drivers');
 const notesRoutes = require('./routes/notes');
+const emailRoutes = require('./routes/email');
 
 // Create the Express app
 const app = express();
@@ -62,6 +63,7 @@ app.use('/api/access', accessRoutes);
 app.use('/api/drivers', driverRoutes);
 app.use('/api/notes', notesRoutes);
 app.use('/api/profile', require('./routes/profile'));
+app.use('/api/email', emailRoutes);
 
 // Test route to confirm server is running
 app.get('/', (req, res) => {
@@ -73,7 +75,7 @@ app.get('/', (req, res) => {
 // Runs every day at 9AM
 // Finds all appointments tomorrow
 // Sends reminder email to patient and caregiver
-cron.schedule('0 9 * * *', async () => {
+/*cron.schedule('0 9 * * *', async () => {
   console.log('Running appointment reminder job...');
   try {
     const result = await pool.query(
@@ -95,6 +97,7 @@ cron.schedule('0 9 * * *', async () => {
        AND DATE(a.appointment_time) = CURRENT_DATE + INTERVAL '1 day'`
     );
 
+    
     for (const apt of result.rows) {
       const aptTime = new Date(apt.appointment_time).toLocaleString();
 
@@ -122,6 +125,23 @@ cron.schedule('0 9 * * *', async () => {
     }
 
     console.log(`Reminders sent for ${result.rows.length} appointments`);
+  } catch (error) {
+    console.error('Reminder cron error:', error.message);
+  }
+});*/
+
+const { sendTomorrowReminders } = require('./services/reminderService');
+
+// =============================================
+// REMINDER CRON JOB
+// =============================================
+// Runs every day at 9AM
+// Calls reminderService to find tomorrow's
+// appointments and send reminder emails
+cron.schedule('0 9 * * *', async () => {
+  console.log('Running appointment reminder job...');
+  try {
+    await sendTomorrowReminders();
   } catch (error) {
     console.error('Reminder cron error:', error.message);
   }

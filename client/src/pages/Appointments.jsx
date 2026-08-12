@@ -15,7 +15,8 @@
 // - Create a new appointment
 // - Cancel an appointment (reason required)
 // - Edit an appointment
-// - See notes attached to an appointment
+// - Mark as completed or missed
+// - Send a reminder email
 //
 // Color coding:
 // Blue   → upcoming
@@ -56,6 +57,7 @@ function Appointments() {
     location: '',
     appointment_time: ''
   });
+  const [reminderSuccess, setReminderSuccess] = useState('');
 
   const user = JSON.parse(localStorage.getItem('user'));
 
@@ -63,11 +65,6 @@ function Appointments() {
     fetchAppointments();
   }, []);
 
-  // =============================================
-  // fetchAppointments
-  // =============================================
-  // Gets all appointments from the backend
-  // Filtered by role (patient or caregiver)
   const fetchAppointments = async () => {
     try {
       const response = await api.get('/appointments');
@@ -79,21 +76,14 @@ function Appointments() {
     }
   };
 
-  // =============================================
-  // handleEventClick
-  // =============================================
-  // Opens the modal when an appointment is clicked
   const handleEventClick = async (appointment) => {
     setSelectedAppointment(appointment);
     setIsEditing(false);
     setCancellingId(null);
     setCancelReason('');
+    setReminderSuccess('');
   };
 
-  // =============================================
-  // calendarEvents
-  // =============================================
-  // Converts appointments to react-big-calendar format
   const calendarEvents = appointments.map(apt => ({
     ...apt,
     title: apt.title,
@@ -101,10 +91,6 @@ function Appointments() {
     end: new Date(new Date(apt.appointment_time).getTime() + 60 * 60 * 1000),
   }));
 
-  // =============================================
-  // eventStyleGetter
-  // =============================================
-  // Controls calendar event colors by status
   const eventStyleGetter = (event) => {
     let backgroundColor;
     let color;
@@ -129,10 +115,6 @@ function Appointments() {
     };
   };
 
-  // =============================================
-  // handleCreate
-  // =============================================
-  // Creates a new appointment
   const handleCreate = async (e) => {
     e.preventDefault();
     try {
@@ -152,10 +134,6 @@ function Appointments() {
     }
   };
 
-  // =============================================
-  // handleEdit
-  // =============================================
-  // Updates an existing appointment
   const handleEdit = async (e) => {
     e.preventDefault();
     try {
@@ -171,10 +149,6 @@ function Appointments() {
     }
   };
 
-  // =============================================
-  // handleCancel
-  // =============================================
-  // Cancels an appointment — reason required
   const handleCancel = async (appointmentId) => {
     if (!cancelReason) {
       setError('Please provide a reason for cancellation');
@@ -193,10 +167,6 @@ function Appointments() {
     }
   };
 
-  // =============================================
-  // handleStatusUpdate
-  // =============================================
-  // Marks appointment as completed or missed
   const handleStatusUpdate = async (status) => {
     try {
       const response = await api.put(
@@ -211,9 +181,19 @@ function Appointments() {
   };
 
   // =============================================
-  // formatDate
+  // handleSendReminder
   // =============================================
-  // Formats a date string to a readable format
+  // Manually sends a reminder email to the
+  // patient and assigned caregiver
+  const handleSendReminder = async () => {
+    try {
+      await api.post(`/email/reminder/${selectedAppointment.id}`);
+      setReminderSuccess('Reminder sent successfully!');
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to send reminder');
+    }
+  };
+
   const formatDate = (dateString) => {
     return new Date(dateString).toLocaleString('en-US', {
       weekday: 'long', year: 'numeric', month: 'long',
@@ -259,18 +239,16 @@ function Appointments() {
         <div style={styles.formCard}>
           <h2 style={styles.formTitle}>Create New Appointment</h2>
           <form onSubmit={handleCreate}>
-
             {user.role === 'caregiver' && (
               <div style={styles.field}>
                 <label style={styles.label}>Patient ID</label>
                 <input
-                  type="text" name="patient_id" value={formData.patient_id}
+                  type="text" value={formData.patient_id}
                   onChange={(e) => setFormData({ ...formData, patient_id: e.target.value })}
                   style={styles.input} placeholder="Enter patient ID" required
                 />
               </div>
             )}
-
             <div style={styles.field}>
               <label style={styles.label}>Title</label>
               <input
@@ -279,7 +257,6 @@ function Appointments() {
                 style={styles.input} placeholder="e.g. Cardiology Checkup" required
               />
             </div>
-
             <div style={styles.field}>
               <label style={styles.label}>Location</label>
               <input
@@ -288,7 +265,6 @@ function Appointments() {
                 style={styles.input} placeholder="e.g. Toronto General Hospital"
               />
             </div>
-
             <div style={styles.field}>
               <label style={styles.label}>Date & Time</label>
               <input
@@ -297,8 +273,6 @@ function Appointments() {
                 style={styles.input} required
               />
             </div>
-
-            {/* Cancellation deadline — patients only */}
             {user.role === 'patient' && (
               <div style={styles.field}>
                 <label style={styles.label}>
@@ -318,7 +292,6 @@ function Appointments() {
                 </small>
               </div>
             )}
-
             <button type="submit" style={styles.submitButton}>
               Create Appointment
             </button>
@@ -453,7 +426,6 @@ function Appointments() {
                 </form>
               ) : (
                 <>
-                  {/* Date & time */}
                   <div style={styles.modalRow}>
                     <span style={styles.modalIcon}>📅</span>
                     <div>
@@ -462,7 +434,6 @@ function Appointments() {
                     </div>
                   </div>
 
-                  {/* Location */}
                   {selectedAppointment.location && (
                     <div style={styles.modalRow}>
                       <span style={styles.modalIcon}>📍</span>
@@ -473,7 +444,6 @@ function Appointments() {
                     </div>
                   )}
 
-                  {/* Patient (caregivers only) */}
                   {user.role === 'caregiver' && selectedAppointment.patient_first_name && (
                     <div style={styles.modalRow}>
                       <span style={styles.modalIcon}>👤</span>
@@ -487,7 +457,6 @@ function Appointments() {
                     </div>
                   )}
 
-                  {/* Created by */}
                   <div style={styles.modalRow}>
                     <span style={styles.modalIcon}>✏️</span>
                     <div>
@@ -499,7 +468,6 @@ function Appointments() {
                     </div>
                   </div>
 
-                  {/* Cancellation deadline */}
                   <div style={styles.modalRow}>
                     <span style={styles.modalIcon}>⏰</span>
                     <div>
@@ -510,7 +478,6 @@ function Appointments() {
                     </div>
                   </div>
 
-                  {/* Cancel reason (if cancelled) */}
                   {selectedAppointment.status === 'cancelled' && selectedAppointment.cancel_reason && (
                     <div style={styles.modalRow}>
                       <span style={styles.modalIcon}>❌</span>
@@ -523,13 +490,13 @@ function Appointments() {
                     </div>
                   )}
 
-                  {/* ── Driver section ── */}
                   <AppointmentDriver appointmentId={selectedAppointment.id} />
-
-                  {/* ── Notes section ── */}
                   <AppointmentNotes appointmentId={selectedAppointment.id} />
 
-                  {/* Cancel form */}
+                  {reminderSuccess && (
+                    <p style={styles.reminderSuccess}>{reminderSuccess}</p>
+                  )}
+
                   {cancellingId === selectedAppointment.id && (
                     <div style={{ marginTop: '1rem' }}>
                       <input
@@ -593,6 +560,12 @@ function Appointments() {
                     >
                       ✅ Completed
                     </button>
+                    <button
+                      onClick={handleSendReminder}
+                      style={styles.reminderButton}
+                    >
+                      📧 Remind
+                    </button>
                   </>
                 )}
               </div>
@@ -605,327 +578,56 @@ function Appointments() {
     </div>
   );
 }
-// =============================================
-// Styles
-// =============================================
+
 const styles = {
-  container: {
-    maxWidth: '1000px',
-    margin: '0 auto',
-    padding: '2rem'
-  },
-  header: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: '1.5rem'
-  },
-  headerLeft: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '1rem'
-  },
-  title: {
-    color: '#333',
-    margin: 0
-  },
-  viewToggle: {
-    display: 'flex',
-    border: '1px solid #ddd',
-    borderRadius: '6px',
-    overflow: 'hidden'
-  },
-  viewBtn: {
-    padding: '6px 16px',
-    border: 'none',
-    background: 'white',
-    cursor: 'pointer',
-    fontSize: '13px',
-    color: '#666'
-  },
-  viewBtnActive: {
-    background: '#1976d2',
-    color: 'white'
-  },
-  createButton: {
-    backgroundColor: '#1976d2',
-    color: 'white',
-    border: 'none',
-    padding: '0.75rem 1.5rem',
-    borderRadius: '4px',
-    cursor: 'pointer',
-    fontSize: '1rem'
-  },
-  error: {
-    backgroundColor: '#ffebee',
-    color: '#c62828',
-    padding: '0.75rem',
-    borderRadius: '4px',
-    marginBottom: '1rem'
-  },
-  formCard: {
-    backgroundColor: 'white',
-    border: '1px solid #e0e0e0',
-    borderRadius: '8px',
-    padding: '1.5rem',
-    marginBottom: '2rem'
-  },
-  formTitle: {
-    color: '#333',
-    marginBottom: '1rem'
-  },
-  field: {
-    marginBottom: '1rem'
-  },
-  label: {
-    display: 'block',
-    marginBottom: '0.5rem',
-    color: '#333',
-    fontWeight: '500'
-  },
-  input: {
-    width: '100%',
-    padding: '0.75rem',
-    border: '1px solid #ddd',
-    borderRadius: '4px',
-    fontSize: '1rem',
-    boxSizing: 'border-box'
-  },
-  submitButton: {
-    backgroundColor: '#1976d2',
-    color: 'white',
-    border: 'none',
-    padding: '0.75rem 1.5rem',
-    borderRadius: '4px',
-    cursor: 'pointer',
-    fontSize: '1rem'
-  },
-  calendarContainer: {
-    backgroundColor: 'white',
-    border: '1px solid #e0e0e0',
-    borderRadius: '8px',
-    padding: '1.5rem'
-  },
-  legend: {
-    display: 'flex',
-    gap: '1.5rem',
-    marginTop: '1rem',
-    fontSize: '13px',
-    color: '#666'
-  },
-  legendItem: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '6px'
-  },
-  legendDot: {
-    width: '12px',
-    height: '12px',
-    borderRadius: '3px',
-    display: 'inline-block'
-  },
-  list: {
-    display: 'grid',
-    gap: '1rem'
-  },
-  empty: {
-    textAlign: 'center',
-    padding: '3rem',
-    backgroundColor: '#f5f5f5',
-    borderRadius: '8px',
-    color: '#666'
-  },
-  card: {
-    backgroundColor: 'white',
-    border: '1px solid #e0e0e0',
-    borderRadius: '8px',
-    padding: '1.5rem',
-    boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-    cursor: 'pointer'
-  },
-  cardHeader: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: '0.75rem'
-  },
-  aptTitle: {
-    color: '#333',
-    margin: 0
-  },
-  badge: {
-    padding: '0.25rem 0.75rem',
-    borderRadius: '20px',
-    fontSize: '0.8rem',
-    fontWeight: '500'
-  },
-  detail: {
-    color: '#666',
-    margin: '0.25rem 0',
-    fontSize: '0.9rem'
-  },
-  overlay: {
-    position: 'fixed',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 1000
-  },
-  modal: {
-    backgroundColor: 'white',
-    borderRadius: '12px',
-    width: '100%',
-    maxWidth: '480px',
-    maxHeight: '85vh',
-    overflowY: 'auto',
-    boxShadow: '0 20px 60px rgba(0,0,0,0.3)'
-  },
-  modalHeader: {
-    padding: '1.25rem',
-    borderBottom: '1px solid #e0e0e0',
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start'
-  },
-  modalTitle: {
-    color: '#333',
-    marginBottom: '0.5rem',
-    fontSize: '1.2rem'
-  },
-  modalBadge: {
-    padding: '0.25rem 0.75rem',
-    borderRadius: '20px',
-    fontSize: '0.8rem',
-    fontWeight: '500'
-  },
-  closeButton: {
-    background: 'none',
-    border: 'none',
-    fontSize: '1.2rem',
-    cursor: 'pointer',
-    color: '#666',
-    padding: '0'
-  },
-  modalBody: {
-    padding: '1.25rem'
-  },
-  modalRow: {
-    display: 'flex',
-    gap: '10px',
-    marginBottom: '12px',
-    alignItems: 'flex-start'
-  },
-  modalIcon: {
-    fontSize: '16px',
-    width: '20px',
-    flexShrink: 0,
-    marginTop: '2px'
-  },
-  modalLabel: {
-    fontSize: '11px',
-    color: '#666',
-    marginBottom: '2px'
-  },
-  modalValue: {
-    fontSize: '14px',
-    color: '#333'
-  },
-  divider: {
-    height: '1px',
-    backgroundColor: '#e0e0e0',
-    margin: '1rem 0'
-  },
-  notesTitle: {
-    fontSize: '13px',
-    fontWeight: '500',
-    color: '#666',
-    marginBottom: '8px'
-  },
-  noNotes: {
-    fontSize: '13px',
-    color: '#999',
-    fontStyle: 'italic'
-  },
-  noteItem: {
-    backgroundColor: '#f5f5f5',
-    borderRadius: '6px',
-    padding: '10px 12px',
-    marginBottom: '8px'
-  },
-  noteContent: {
-    fontSize: '13px',
-    color: '#333',
-    marginBottom: '4px'
-  },
-  noteMeta: {
-    fontSize: '11px',
-    color: '#999'
-  },
-  modalFooter: {
-    padding: '1rem 1.25rem',
-    borderTop: '1px solid #e0e0e0',
-    display: 'flex',
-    gap: '8px',
-    justifyContent: 'flex-end'
-  },
-  cancelButton: {
-    backgroundColor: 'transparent',
-    color: '#c62828',
-    border: '1px solid #c62828',
-    padding: '0.5rem 1rem',
-    borderRadius: '4px',
-    cursor: 'pointer'
-  },
-  editButton: {
-    backgroundColor: '#1976d2',
-    color: 'white',
-    border: 'none',
-    padding: '0.5rem 1rem',
-    borderRadius: '4px',
-    cursor: 'pointer'
-  },
-  missedButton: {
-    backgroundColor: '#f57f17',
-    color: 'white',
-    border: 'none',
-    padding: '0.5rem 1rem',
-    borderRadius: '4px',
-    cursor: 'pointer'
-  },
-  completedButton: {
-    backgroundColor: '#2e7d32',
-    color: 'white',
-    border: 'none',
-    padding: '0.5rem 1rem',
-    borderRadius: '4px',
-    cursor: 'pointer'
-  },
-  confirmCancelButton: {
-    backgroundColor: '#c62828',
-    color: 'white',
-    border: 'none',
-    padding: '0.5rem 1rem',
-    borderRadius: '4px',
-    cursor: 'pointer'
-  },
-  backButton: {
-    backgroundColor: 'transparent',
-    color: '#666',
-    border: '1px solid #ddd',
-    padding: '0.5rem 1rem',
-    borderRadius: '4px',
-    cursor: 'pointer'
-  },
-  loading: {
-    textAlign: 'center',
-    padding: '3rem',
-    color: '#666'
-  }
+  container: { maxWidth: '1000px', margin: '0 auto', padding: '2rem' },
+  header: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' },
+  headerLeft: { display: 'flex', alignItems: 'center', gap: '1rem' },
+  title: { color: '#333', margin: 0 },
+  viewToggle: { display: 'flex', border: '1px solid #ddd', borderRadius: '6px', overflow: 'hidden' },
+  viewBtn: { padding: '6px 16px', border: 'none', background: 'white', cursor: 'pointer', fontSize: '13px', color: '#666' },
+  viewBtnActive: { background: '#1976d2', color: 'white' },
+  createButton: { backgroundColor: '#1976d2', color: 'white', border: 'none', padding: '0.75rem 1.5rem', borderRadius: '4px', cursor: 'pointer', fontSize: '1rem' },
+  error: { backgroundColor: '#ffebee', color: '#c62828', padding: '0.75rem', borderRadius: '4px', marginBottom: '1rem' },
+  formCard: { backgroundColor: 'white', border: '1px solid #e0e0e0', borderRadius: '8px', padding: '1.5rem', marginBottom: '2rem' },
+  formTitle: { color: '#333', marginBottom: '1rem' },
+  field: { marginBottom: '1rem' },
+  label: { display: 'block', marginBottom: '0.5rem', color: '#333', fontWeight: '500' },
+  input: { width: '100%', padding: '0.75rem', border: '1px solid #ddd', borderRadius: '4px', fontSize: '1rem', boxSizing: 'border-box' },
+  submitButton: { backgroundColor: '#1976d2', color: 'white', border: 'none', padding: '0.75rem 1.5rem', borderRadius: '4px', cursor: 'pointer', fontSize: '1rem' },
+  calendarContainer: { backgroundColor: 'white', border: '1px solid #e0e0e0', borderRadius: '8px', padding: '1.5rem' },
+  legend: { display: 'flex', gap: '1.5rem', marginTop: '1rem', fontSize: '13px', color: '#666' },
+  legendItem: { display: 'flex', alignItems: 'center', gap: '6px' },
+  legendDot: { width: '12px', height: '12px', borderRadius: '3px', display: 'inline-block' },
+  list: { display: 'grid', gap: '1rem' },
+  empty: { textAlign: 'center', padding: '3rem', backgroundColor: '#f5f5f5', borderRadius: '8px', color: '#666' },
+  card: { backgroundColor: 'white', border: '1px solid #e0e0e0', borderRadius: '8px', padding: '1.5rem', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', cursor: 'pointer' },
+  cardHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' },
+  aptTitle: { color: '#333', margin: 0 },
+  badge: { padding: '0.25rem 0.75rem', borderRadius: '20px', fontSize: '0.8rem', fontWeight: '500' },
+  detail: { color: '#666', margin: '0.25rem 0', fontSize: '0.9rem' },
+  overlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 },
+  modal: { backgroundColor: 'white', borderRadius: '12px', width: '100%', maxWidth: '480px', maxHeight: '85vh', overflowY: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' },
+  modalHeader: { padding: '1.25rem', borderBottom: '1px solid #e0e0e0', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' },
+  modalTitle: { color: '#333', marginBottom: '0.5rem', fontSize: '1.2rem' },
+  modalBadge: { padding: '0.25rem 0.75rem', borderRadius: '20px', fontSize: '0.8rem', fontWeight: '500' },
+  closeButton: { background: 'none', border: 'none', fontSize: '1.2rem', cursor: 'pointer', color: '#666', padding: '0' },
+  modalBody: { padding: '1.25rem' },
+  modalRow: { display: 'flex', gap: '10px', marginBottom: '12px', alignItems: 'flex-start' },
+  modalIcon: { fontSize: '16px', width: '20px', flexShrink: 0, marginTop: '2px' },
+  modalLabel: { fontSize: '11px', color: '#666', marginBottom: '2px' },
+  modalValue: { fontSize: '14px', color: '#333' },
+  divider: { height: '1px', backgroundColor: '#e0e0e0', margin: '1rem 0' },
+  modalFooter: { padding: '1rem 1.25rem', borderTop: '1px solid #e0e0e0', display: 'flex', gap: '8px', justifyContent: 'flex-end', flexWrap: 'wrap' },
+  cancelButton: { backgroundColor: 'transparent', color: '#c62828', border: '1px solid #c62828', padding: '0.5rem 1rem', borderRadius: '4px', cursor: 'pointer' },
+  editButton: { backgroundColor: '#1976d2', color: 'white', border: 'none', padding: '0.5rem 1rem', borderRadius: '4px', cursor: 'pointer' },
+  missedButton: { backgroundColor: '#f57f17', color: 'white', border: 'none', padding: '0.5rem 1rem', borderRadius: '4px', cursor: 'pointer' },
+  completedButton: { backgroundColor: '#2e7d32', color: 'white', border: 'none', padding: '0.5rem 1rem', borderRadius: '4px', cursor: 'pointer' },
+  reminderButton: { backgroundColor: '#0f3d35', color: 'white', border: 'none', padding: '0.5rem 1rem', borderRadius: '4px', cursor: 'pointer' },
+  reminderSuccess: { backgroundColor: '#e8f5e9', color: '#2e7d32', padding: '0.5rem 0.75rem', borderRadius: '6px', fontSize: '13px', marginTop: '0.5rem' },
+  confirmCancelButton: { backgroundColor: '#c62828', color: 'white', border: 'none', padding: '0.5rem 1rem', borderRadius: '4px', cursor: 'pointer' },
+  backButton: { backgroundColor: 'transparent', color: '#666', border: '1px solid #ddd', padding: '0.5rem 1rem', borderRadius: '4px', cursor: 'pointer' },
+  loading: { textAlign: 'center', padding: '3rem', color: '#666' }
 };
 
 export default Appointments;
