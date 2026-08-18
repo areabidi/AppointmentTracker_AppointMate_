@@ -16,6 +16,7 @@ const express = require('express');
 const router = express.Router();
 const pool = require('../db');
 const { verifyToken } = require('../middleware/authMiddleware');
+const { sendAppointmentNotification } = require('../services/emailService');
 
 // =============================================
 // GET /api/appointments
@@ -128,7 +129,25 @@ router.post('/', verifyToken, async (req, res) => {
       [patient_id, id, title, location, appointment_time]
     );
 
-    const appointment = result.rows[0];
+const appointment = result.rows[0];
+
+    // Notify all approved caregivers for this patient
+    try {
+      const caregivers = await pool.query(
+        `SELECT u.email FROM patient_caregiver_access pca
+         JOIN users u ON u.id = pca.caregiver_id
+         WHERE pca.patient_id = $1 AND pca.status = 'approved'`,
+        [patient_id]
+      );
+
+      const recipientEmails = caregivers.rows.map(row => row.email);
+
+      if (recipientEmails.length > 0) {
+        await sendAppointmentNotification(recipientEmails, appointment);
+      }
+    } catch (notifyError) {
+      console.error('Failed to notify caregivers:', notifyError.message);
+    }
 
     res.status(201).json({
       message: 'Appointment created successfully!',
