@@ -2,7 +2,7 @@
 // services/emailService.js
 // =============================================
 // Handles all email notifications for AppointMate
-// Uses SendGrid to send emails
+// Uses Resend to send emails
 //
 // Emails sent:
 // 1. New appointment created → caregivers notified
@@ -11,12 +11,11 @@
 // 4. Reminder → day before appointment
 // =============================================
 
-const sgMail = require('@sendgrid/mail');
+const { Resend } = require('resend');
 
-// Set SendGrid API key from environment variables
-sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+const resend = new Resend(process.env.RESEND_API_KEY);
 
-const FROM_EMAIL = process.env.SENDGRID_FROM_EMAIL;
+const FROM_EMAIL = process.env.RESEND_FROM_EMAIL;
 
 // =============================================
 // sendAppointmentNotification
@@ -25,7 +24,7 @@ const FROM_EMAIL = process.env.SENDGRID_FROM_EMAIL;
 // is created for their patient
 const sendAppointmentNotification = async (recipients, appointment) => {
   try {
-    const msg = {
+    await resend.emails.send({
       to: recipients,
       from: FROM_EMAIL,
       subject: `New Appointment: ${appointment.title}`,
@@ -42,9 +41,7 @@ const sendAppointmentNotification = async (recipients, appointment) => {
           <p style="color: #888; font-size: 12px;">This email was sent by AppointMate</p>
         </div>
       `
-    };
-
-    await sgMail.sendMultiple(msg);
+    });
     console.log('Appointment notification sent to:', recipients);
 
   } catch (error) {
@@ -59,7 +56,7 @@ const sendAppointmentNotification = async (recipients, appointment) => {
 // conflict occurs
 const sendConflictNotification = async (caregiver1Email, caregiver2Email, appointment) => {
   try {
-    const msg = {
+    await resend.emails.send({
       to: [caregiver1Email, caregiver2Email],
       from: FROM_EMAIL,
       subject: `Driver Conflict: ${appointment.title}`,
@@ -76,9 +73,7 @@ const sendConflictNotification = async (caregiver1Email, caregiver2Email, appoin
           <p style="color: #888; font-size: 12px;">This email was sent by AppointMate</p>
         </div>
       `
-    };
-
-    await sgMail.sendMultiple(msg);
+    });
     console.log('Conflict notification sent to:', caregiver1Email, caregiver2Email);
 
   } catch (error) {
@@ -100,7 +95,7 @@ const sendDriverAcceptedEmail = async ({
   location
 }) => {
   try {
-    const msg = {
+    await resend.emails.send({
       to: patientEmail,
       from: FROM_EMAIL,
       subject: `${caregiverName} will drive you to your appointment`,
@@ -119,9 +114,7 @@ const sendDriverAcceptedEmail = async ({
           <p style="color: #888; font-size: 12px;">This email was sent by AppointMate</p>
         </div>
       `
-    };
-
-    await sgMail.send(msg);
+    });
     console.log(`Driver accepted email sent to ${patientEmail}`);
 
   } catch (error) {
@@ -143,7 +136,7 @@ const sendReminderEmail = async ({
   role
 }) => {
   try {
-    const msg = {
+    await resend.emails.send({
       to: email,
       from: FROM_EMAIL,
       subject: `Reminder: ${appointmentTitle} is tomorrow`,
@@ -163,9 +156,7 @@ const sendReminderEmail = async ({
           <p style="color: #888; font-size: 12px;">This email was sent by AppointMate</p>
         </div>
       `
-    };
-
-    await sgMail.send(msg);
+    });
     console.log(`Reminder email sent to ${email}`);
 
   } catch (error) {
