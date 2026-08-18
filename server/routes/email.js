@@ -5,7 +5,11 @@
 //
 // POST /api/email/test
 //      → sends a test email to confirm
-//        SendGrid is working
+//        Resend is working
+//
+// POST /api/email/reminder/:id
+//      → manually sends a reminder for a
+//        specific appointment
 //
 // All routes require the user to be logged in
 // =============================================
@@ -17,12 +21,11 @@ const {
   sendDriverAcceptedEmail,
   sendReminderEmail
 } = require('../services/emailService');
+const { sendAppointmentReminder } = require('../services/reminderService');
 
 // =============================================
 // POST /api/email/test
 // =============================================
-// Sends a test email to the logged in user
-// Useful for confirming SendGrid is working
 router.post('/test', verifyToken, async (req, res) => {
   try {
     const { email, name } = req.body;
@@ -41,6 +44,23 @@ router.post('/test', verifyToken, async (req, res) => {
   } catch (error) {
     console.error('Test email error:', error.message);
     res.status(500).json({ error: 'Failed to send test email' });
+  }
+});
+
+// =============================================
+// POST /api/email/reminder/:id
+// =============================================
+// Manually sends a reminder email for a
+// specific appointment (used by the 📧 Remind
+// button in the appointment modal)
+router.post('/reminder/:id', verifyToken, async (req, res) => {
+  try {
+    const appointment = await sendAppointmentReminder(req.params.id);
+    res.status(200).json({ message: 'Reminder sent successfully!', appointment });
+
+  } catch (error) {
+    console.error('Manual reminder error:', error.message);
+    res.status(500).json({ error: 'Failed to send reminder' });
   }
 });
 
