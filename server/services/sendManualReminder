@@ -23,6 +23,8 @@ const { sendReminderEmail } = require('./emailService');
 //
 // Used by the automatic daily cron job
 const sendAppointmentReminder = async (appointmentId) => {
+  // Get appointment details including
+  // patient and caregiver info
   const result = await pool.query(
     `SELECT 
       a.title,
@@ -48,6 +50,7 @@ const sendAppointmentReminder = async (appointmentId) => {
   const apt = result.rows[0];
   const aptTime = new Date(apt.appointment_time).toLocaleString();
 
+  // Send to patient
   await sendReminderEmail({
     email: apt.patient_email,
     name: apt.patient_name,
@@ -57,6 +60,7 @@ const sendAppointmentReminder = async (appointmentId) => {
     role: 'patient'
   });
 
+  // Send to caregiver if one is assigned
   if (apt.caregiver_email) {
     await sendReminderEmail({
       email: apt.caregiver_email,
@@ -105,6 +109,7 @@ const sendTomorrowReminders = async () => {
 //
 // Used only by the manual 📧 Remind button
 const sendManualReminder = async (appointmentId, userId) => {
+  // Get appointment details
   const aptResult = await pool.query(
     `SELECT title, appointment_time, location FROM appointments WHERE id = $1`,
     [appointmentId]
@@ -117,6 +122,7 @@ const sendManualReminder = async (appointmentId, userId) => {
   const apt = aptResult.rows[0];
   const aptTime = new Date(apt.appointment_time).toLocaleString();
 
+  // Get the logged-in user's info (whoever clicked Remind)
   const userResult = await pool.query(
     `SELECT email, first_name, role FROM users WHERE id = $1`,
     [userId]

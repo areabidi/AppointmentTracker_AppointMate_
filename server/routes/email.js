@@ -21,7 +21,8 @@ const {
   sendDriverAcceptedEmail,
   sendReminderEmail
 } = require('../services/emailService');
-const { sendAppointmentReminder } = require('../services/reminderService');
+const { sendManualReminder } = require('../services/reminderService');
+//const { sendAppointmentReminder } = require('../services/reminderService');
 
 // =============================================
 // POST /api/email/test
@@ -50,12 +51,13 @@ router.post('/test', verifyToken, async (req, res) => {
 // =============================================
 // POST /api/email/reminder/:id
 // =============================================
-// Manually sends a reminder email for a
-// specific appointment (used by the 📧 Remind
+//manaually sends a reminder to whoever
+//        clicked the Remind button (used by the 📧 Remind
 // button in the appointment modal)
 router.post('/reminder/:id', verifyToken, async (req, res) => {
   try {
-    const appointment = await sendAppointmentReminder(req.params.id);
+    //const appointment = await sendAppointmentReminder(req.params.id);
+    const appointment = await sendManualReminder(req.params.id, req.user.id);
     res.status(200).json({ message: 'Reminder sent successfully!', appointment });
 
   } catch (error) {
