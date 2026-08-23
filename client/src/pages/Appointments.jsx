@@ -552,13 +552,13 @@ function Appointments() {
                       onClick={() => handleStatusUpdate('missed')}
                       style={styles.missedButton}
                     >
-                      🚫 Missed
+                      Missed  
                     </button>
                     <button
                       onClick={() => handleStatusUpdate('completed')}
                       style={styles.completedButton}
                     >
-                      ✅ Completed
+                      Completed
                     </button>
                     <button
                       onClick={handleSendReminder}
