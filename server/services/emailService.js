@@ -187,13 +187,15 @@ module.exports = {
 const nodemailer = require('nodemailer');
 
 const transporter = nodemailer.createTransport({
-  service: 'gmail',
+   host: 'smtp.gmail.com',
+  port: 465,
+  secure: true,
   auth: {
     user: process.env.GMAIL_USER,
     pass: process.env.GMAIL_APP_PASSWORD
-  }
+  },
+  family: 4 // forces IPv4, avoids ENETUNREACH on some hosts
 });
-
 const FROM_EMAIL = process.env.GMAIL_USER;
 
 // =============================================
@@ -223,6 +225,8 @@ const sendAppointmentNotification = async (recipients, appointment) => {
 
   } catch (error) {
     console.error('Email notification error:', error.message);
+      throw error;   // ← add this line to each catch block
+
   }
 };
 
@@ -253,6 +257,8 @@ const sendConflictNotification = async (caregiver1Email, caregiver2Email, appoin
 
   } catch (error) {
     console.error('Conflict email error:', error.message);
+      throw error;   // ← add this line to each catch block
+
   }
 };
 
@@ -292,6 +298,8 @@ const sendDriverAcceptedEmail = async ({
 
   } catch (error) {
     console.error('Driver accepted email error:', error.message);
+      throw error;   // ← add this line to each catch block
+
   }
 };
 
@@ -332,6 +340,8 @@ const sendReminderEmail = async ({
 
   } catch (error) {
     console.error('Reminder email error:', error.message);
+      throw error;   // ← add this line to each catch block
+
   }
 };
 
